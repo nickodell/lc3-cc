@@ -1,0 +1,10 @@
+# virtualenv
+bin
+include
+lib
+pip-selfcheck.json
+
+# generated
+*.asm
+*.obj
+*.sym
