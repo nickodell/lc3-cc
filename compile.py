@@ -11,6 +11,10 @@ function_builtins = {}
 labels_used = set()
 error = 0
 
+NEG  = 4
+ZERO = 2
+POS  = 1
+
 def set_error():
     global error
     error = 1
@@ -226,11 +230,7 @@ def emit_for(statement, function_name, variables):
 def emit_loop(function_name, variables, init, cond, next, check_cond_first_loop):
     pass
 
-
 def emit_if(statement, function_name, variables):
-    NEG  = 4
-    ZERO = 2
-    POS  = 1
     a = []
     # check how much stack space the if block takes
     # then how much stack space the else takes
@@ -293,9 +293,6 @@ def emit_cond(statement, function_name, variables, cond, label, invert_sense=Fal
     return a
 
 def branch_type_to_shorthand(branch_type):
-    NEG  = 4
-    ZERO = 2
-    POS  = 1
     ret = ""
     if branch_type & NEG : ret += "n"
     if branch_type & ZERO: ret += "z"
@@ -330,9 +327,6 @@ def swap_compare_operands(cond):
     return c_ast.BinaryOp(new_op, cond.right, cond.left, cond.coord)
 
 def compare_type_to_branch_type(op):
-    NEG  = 4
-    ZERO = 2
-    POS  = 1
     branch_type = {
         '>'  :              POS,
         '<'  : NEG             ,
