@@ -205,6 +205,10 @@ def emit_block(node, function_name):
                 add_a, new_frame_size = emit_if(statement, function_name, variables)
                 a += add_a
                 max_frame_size = max(new_frame_size, max_frame_size)
+            elif typ == c_ast.For:
+                add_a, new_frame_size = emit_for(statement, function_name, variables)
+                a += add_a
+                max_frame_size = max(new_frame_size, max_frame_size)
             else:
                 a += undefined(statement)
         except AttributeError:
@@ -215,6 +219,14 @@ def emit_block(node, function_name):
     max_frame_size = max(frame_size, max_frame_size)
     return a, frame_size
 
+def emit_for(statement, function_name, variables):
+    return emit_loop(function_name, variables, \
+        statement.init, statement.cond, statement.next, True)
+
+def emit_loop(function_name, variables, init, cond, next, check_cond_first_loop):
+    pass
+
+
 def emit_if(statement, function_name, variables):
     NEG  = 4
     ZERO = 2
@@ -224,42 +236,16 @@ def emit_if(statement, function_name, variables):
     # then how much stack space the else takes
     # return the maximum of the two
     max_frame_size = 0
-    cond = statement.cond
-    cond_typ = type(cond)
     else_clause = statement.iffalse is not None
-    if is_explicit_if(cond):
-        rhs_zero = has_zero_operand(cond, rhs=True)
-        lhs_zero = has_zero_operand(cond, rhs=False)
-
-        # Presently, the compiler does not support a comparison like
-        # a > b. If you need to do this, rewrite it as a - b > 0.
-        if not lhs_zero and not rhs_zero:
-           raise Exception("Cannot have non-zero value on both sides of compare")
-        # if statement is like 0 > a, rewrite it as a < 0
-        if lhs_zero and not rhs_zero:
-           cond = swap_compare_operands(cond)
-        # assert right hand side has zero
-        assert has_zero_operand(cond, rhs=True)
-        # We're going to compute the left hand side of this expression,
-        # then branch on that being negative, zero, positive, or some
-        # combination of those
-        op = cond.op
-        a += emit_rvalue_expression(cond.left, variables, statement)
-        branch_type = compare_type_to_branch_type(op)
-
-        # We want to take the branch past the iftrue block if the condition
-        # is *not* true. Therefore, we should invert the branch type. If it
-        # was 'zp' before, it is 'n' now.
-        branch_type = invert_branch_type(branch_type)
-    else:
-        a += emit_rvalue_expression(cond, variables, statement)
-        branch_type = ZERO
-    # branch if zero to after iftrue block
     if else_clause:
         label_endif = reserve_label("%s_else" % function_name)
     else:
         label_endif = reserve_label("%s_skipif" % function_name)
-    a += asm("BR%s %s" % (branch_type_to_shorthand(branch_type), label_endif))
+
+    # We want to take the branch past the iftrue block if the condition
+    # is *not* true. Therefore, we should invert the branch type, by passing
+    # invert_sense=True. If it was 'zp' before, it is 'n' now.
+    a += emit_cond(statement, function_name, variables, statement.cond, label_endif, True)
     add_a, new_frame_size = emit_block(statement.iftrue, function_name)
     a += add_a
     max_frame_size = new_frame_size
@@ -276,6 +262,35 @@ def emit_if(statement, function_name, variables):
         a += add_a
         a += asm("%s" % label_endelse)
     return a, max_frame_size
+
+def emit_cond(statement, function_name, variables, cond, label, invert_sense=False):
+    a = []
+    if is_explicit_if(cond):
+        rhs_zero = has_zero_operand(cond, rhs=True)
+        lhs_zero = has_zero_operand(cond, rhs=False)
+
+        # Presently, the compiler does not support a comparison like
+        # a > b. If you need to do this, rewrite it as a - b > 0.
+        if not lhs_zero and not rhs_zero:
+           raise Exception("Cannot have non-zero value on both sides of compare")
+        # if statement is like 0 > a, rewrite it as a < 0
+        if lhs_zero and not rhs_zero:
+           cond = swap_compare_operands(cond)
+        # assert right hand side has zero
+        assert has_zero_operand(cond, rhs=True)
+        # We're going to compute the left hand side of this expression,
+        # then branch on that being negative, zero, positive, or some
+        # combination of those
+        a += emit_rvalue_expression(cond.left, variables, statement)
+        branch_type = compare_type_to_branch_type(cond.op)
+
+        if invert_sense:
+            branch_type = invert_branch_type(branch_type)
+    else:
+        a += emit_rvalue_expression(cond, variables, statement)
+        branch_type = ZERO
+    a += asm("BR%s %s" % (branch_type_to_shorthand(branch_type), label))
+    return a
 
 def branch_type_to_shorthand(branch_type):
     NEG  = 4
@@ -655,7 +670,7 @@ def emit_all(ast):
 
 def main(filename):
     add_builtin_prototypes()
-    ast = parse_file(filename, use_cpp=False)
+    ast = parse_file(filename, use_cpp=True)
     # ast.show()
     emit_all(ast)
     sys.exit(error)
