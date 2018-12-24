@@ -1,16 +1,20 @@
 #!/usr/bin/env python3  
 import sys
 import inspect
+import itertools
 from pycparser import parse_file, c_ast, c_parser
 from collections import namedtuple
-Argument = namedtuple('Argument', 'source contents')
+Argument = namedtuple('Argument', 'source contents original_arg ')
 
 function_prototypes = {}
 function_builtins = {}
+labels_used = set()
 error = 0
+
 def set_error():
     global error
     error = 1
+
 def asm(arg): return [arg + "\n"]
 
 def undefined(arg):
@@ -22,6 +26,31 @@ def undefined(arg):
     else:
         funcname = inspect.stack()[1].function
         return "\n" + funcname + "\n\t" + arg + "\n\n"
+
+def reserve_label(label_name):
+    """Hand out a label, but only once."""
+    global labels_used
+    if label_name not in labels_used:
+        labels_used.add(label_name)
+        return label_name
+    # The label is already taken. Try label_2, label_3, etc.
+    for i in itertools.count(2):
+        label_name_numbered = label_name + "_" + str(i)
+        if label_name_numbered not in labels_used:
+            labels_used.add(label_name_numbered)
+            return label_name_numbered
+
+def get_explanation(constant):
+    if constant.value.startswith('0x'):
+        # This is a hex constant.
+        # We will emit it in hex.
+        # Explanation not needed.
+        return None
+    return constant.value
+
+def within_5bit_twos_complement(n):
+    return -(2**4) <= n <= (2**4)-1
+
 
 ####################
 # INITIALIZATION
@@ -65,7 +94,6 @@ def has_ret_value_slot(name, location=None):
     func_prototype = get_prototype(name, location)
     ret_value_slot = True
     if func_prototype.type.type.names[0] == 'void':
-        # print("found void call '%s'" % name)
         ret_value_slot = False
     return ret_value_slot
 
@@ -133,61 +161,175 @@ def function_epilogue(name, frame_size=0, ret_value_slot=True):
     a += asm("RET")
     return a
 
-def block_emit(node):
+def emit_block(node, function_name):
+    if node.block_items is None:
+        # an empty function requires no space
+        frame_size = 0
+        return [], frame_size
+
     a = []
     variables = {}
-    if node.body.block_items is not None:
-        for statement in node.body.block_items:
-            try:
-                typ = type(statement)
-                if typ == c_ast.FuncCall:
-                    name = statement.name.name
-                    location = statement.coord
-                    ret_value_slot = has_ret_value_slot(name, statement.coord)
-                    args = statement.args.exprs
-                    a += call_function(name, args, ret_value_slot, variables)
-                elif typ == c_ast.Decl:
-                    # stack grows downward
-                    location = -(len(variables) + 1)
-                    variables[statement.name] = location
-                    if statement.init is not None:
-                        literal = statement.init.value
-                        explain = None
-                        if not literal.startswith('0x'):
-                            # if not a hex literal
-                            explain = literal
-                        value = parse_int_literal(literal)
-                        a += set_register(0, value, explain)
-                        a += store_register_fp_rel(0, location)
-                elif typ == c_ast.Assignment:
-                    lhs = statement.lvalue
-                    rhs = statement.rvalue
-                    lhs_typ = type(lhs)
-                    rhs_typ = type(rhs)
+    max_frame_size = 0
 
-                    # load right side
-                    # if rhs_typ == c_ast.ID:
-                    #     location_rhs = variables[rhs.name]
-                    #     a += load_register_fp_rel(0, location_rhs)
-                    # else:
-                    #     a += undefined(statement)
-                    #     continue
-                    a += emit_rvalue_expression(rhs, variables, statement)
+    for statement in node.block_items:
+        try:
+            typ = type(statement)
+            if typ == c_ast.FuncCall:
+                name = statement.name.name
+                location = statement.coord
+                ret_value_slot = has_ret_value_slot(name, statement.coord)
+                args = statement.args.exprs
+                a += call_function(name, args, ret_value_slot, variables)
+            elif typ == c_ast.Decl:
+                # stack grows downward
+                location = -(len(variables) + 1)
+                variables[statement.name] = location
+                if statement.init is not None:
+                    a += emit_rvalue_expression(statement.init, variables, statement)
+                    a += store_register_fp_rel(0, location)
+            elif typ == c_ast.Assignment:
+                lhs = statement.lvalue
+                rhs = statement.rvalue
+                lhs_typ = type(lhs)
+                rhs_typ = type(rhs)
 
-                    # store to left side
-                    if lhs_typ == c_ast.ID:
-                        location_lhs = variables[lhs.name]
-                        a += store_register_fp_rel(0, location_lhs)
-                    else:
-                        a += undefined(statement)
+                a += emit_rvalue_expression(rhs, variables, statement)
+
+                # store to left side
+                if lhs_typ == c_ast.ID:
+                    location_lhs = variables[lhs.name]
+                    a += store_register_fp_rel(0, location_lhs)
                 else:
                     a += undefined(statement)
-            except AttributeError:
-                print("Attempted to translate:")
-                print(statement)
-                raise
+            elif typ == c_ast.If:
+                add_a, new_frame_size = emit_if(statement, function_name, variables)
+                a += add_a
+                max_frame_size = max(new_frame_size, max_frame_size)
+            else:
+                a += undefined(statement)
+        except AttributeError:
+            print("Attempted to translate:")
+            print(statement)
+            raise
     frame_size = len(variables)
+    max_frame_size = max(frame_size, max_frame_size)
     return a, frame_size
+
+def emit_if(statement, function_name, variables):
+    NEG  = 4
+    ZERO = 2
+    POS  = 1
+    a = []
+    # check how much stack space the if block takes
+    # then how much stack space the else takes
+    # return the maximum of the two
+    max_frame_size = 0
+    cond = statement.cond
+    cond_typ = type(cond)
+    else_clause = statement.iffalse is not None
+    if is_explicit_if(cond):
+        print(cond)
+        rhs_zero = has_zero_operand(cond, rhs=True)
+        lhs_zero = has_zero_operand(cond, rhs=False)
+        if not lhs_zero and not rhs_zero:
+           raise Exception("Cannot have non-zero value on both sides of compare")
+        # if statement is like 0 > a, rewrite it as a < 0
+        if lhs_zero and not rhs_zero:
+           cond = swap_compare_operands(cond)
+        print(cond)
+        # assert right hand side has zero
+        assert has_zero_operand(cond, rhs=True)
+        # We're going to compute the left hand side of this expression,
+        # then branch on that being negative, zero, positive, or some
+        # combination of those
+        op = cond.op
+        a += emit_rvalue_expression(cond.left, variables, statement)
+        branch_type = compare_type_to_branch_type(op)
+
+        # We want to take the branch past the iftrue block if the condition
+        # is *not* true. Therefore, we should invert the branch type. If it
+        # was 'zp' before, it is 'n' now.
+        branch_type = invert_branch_type(branch_type)
+    else:
+        a += emit_rvalue_expression(cond, variables, statement)
+        branch_type = ZERO
+    # branch if zero to after iftrue block
+    if else_clause:
+        label_endif = reserve_label("%s_else" % function_name)
+    else:
+        label_endif = reserve_label("%s_skipif" % function_name)
+    a += asm("BR%s %s" % (branch_type_to_shorthand(branch_type), label_endif))
+    add_a, new_frame_size = emit_block(statement.iftrue, function_name)
+    a += add_a
+    max_frame_size = new_frame_size
+    a += asm("%s" % label_endif)
+    if else_clause:
+        # If execution has reached this point,
+        # the iftrue branch must have run.
+
+        # Jump past the else clause
+        label_endelse = reserve_label("%s_skipelse" % function_name)
+        a += asm("BR %s" % label_endelse)
+        add_a, new_frame_size = emit_block(statement.iffalse, function_name)
+        max_frame_size = max(max_frame_size, new_frame_size)
+        a += add_a
+        a += asm("%s" % label_endelse)
+    return a, max_frame_size
+
+def branch_type_to_shorthand(branch_type):
+    NEG  = 4
+    ZERO = 2
+    POS  = 1
+    ret = ""
+    if branch_type & NEG : ret += "n"
+    if branch_type & ZERO: ret += "z"
+    if branch_type & POS : ret += "p"
+    if ret == "": raise Exception("Error, cannot emit branch that is never taken")
+    return ret
+
+def is_explicit_if(cond):
+    cond_typ = type(cond)
+    if cond_typ == c_ast.BinaryOp and cond.op in ['<', '>', '>=', '<=', '==', '!=']:
+        return True
+    return False
+
+def has_zero_operand(cond, rhs):
+    if rhs:
+        side = cond.right
+    else:
+        side = cond.left
+    return type(side) == c_ast.Constant and side.value == '0'
+
+def swap_compare_operands(cond):
+    reversed_operator = {
+        '>'  : '<',
+        '<'  : '>',
+        '>=' : '<=',
+        '<=' : '>=',
+        '==' : '==',
+        '!=' : '!=',
+    }
+    new_op = reversed_operator[cond.op]
+    # Normal order is (left, right), but we're swapping.
+    return c_ast.BinaryOp(new_op, cond.right, cond.left, cond.coord)
+
+def compare_type_to_branch_type(op):
+    NEG  = 4
+    ZERO = 2
+    POS  = 1
+    branch_type = {
+        '>'  : POS,
+        '<'  : NEG,
+        '>=' : ZERO | POS,
+        '<=' : NEG | ZERO,
+        '==' : ZERO,
+        '!=' : NEG | POS,
+    }
+    return branch_type[op]
+
+def invert_branch_type(op):
+    assert type(op) == int, repr(op) + " is not int"
+    return 0b111 - op
 
 def call_function(name, args, ret_value_slot, variables):
     a = []
@@ -219,22 +361,22 @@ def preprocess_arg(arg, variables):
     typ = type(arg)
     if typ == c_ast.ID:
         name = arg.name
-        return Argument("stack", variables[name])
+        return Argument("stack", variables[name], arg)
     elif typ == c_ast.Constant:
-        return Argument("constant", arg.value)
+        return Argument("constant", arg.value, arg)
     raise Exception("Cannot handle arg type: " + str(typ) + "\n"
         + str(arg))
 
 def load_arguments_to_stack(args_preprocessed):
     a = []
     for argument in reversed(args_preprocessed):
-        source, contents = argument
+        source, contents, original_arg = argument
         if source == "stack":
             offset = contents
             a += asm("LDR R0, R5, #%d" % offset)
         elif source == "constant":
-            imm = source
-            a += set_register(0, imm)
+            imm = parse_int_literal(contents)
+            a += set_register(0, imm, get_explanation(original_arg))
         else:
             raise Exception()
         a += asm("PUSH R0")
@@ -243,14 +385,14 @@ def load_arguments_to_stack(args_preprocessed):
 def load_arguments_to_registers(args_preprocessed):
     a = []
     for regnum, argument in enumerate(args_preprocessed):
-        source, contents = argument
+        source, contents, original_arg = argument
         if source == "stack":
             offset = contents
             assert regnum <= 4
             a += asm("LDR R%d, R5, #%d" % (regnum, offset))
         elif source == "constant":
             imm = parse_int_literal(contents)
-            a += set_register(regnum, imm)
+            a += set_register(regnum, imm, get_explanation(original_arg))
         else:
             raise Exception()
     return a
@@ -297,27 +439,57 @@ def postfix_traverse(node):
         # location_rhs = variables[node.name]
         # a += load_register_fp_rel(0, location_rhs)
         return [("load", node.name)]
+    elif typ == c_ast.Constant:
+        return [("set", parse_int_literal(node.value))]
     elif typ == c_ast.UnaryOp:
         return postfix_traverse(node.expr) + [node.op]
     elif typ == c_ast.BinaryOp:
         return postfix_traverse(node.left)  + \
                postfix_traverse(node.right) + [node.op]
     else:
-        raise Exception()
+        raise Exception("Error parsing expression: unknown op type " + str(typ))
 
 def postfix_optimize(postfix):
+    curr_num_neighbors = 0
+    curr_i = 0
+    def group_iterate(num_neighbors):
+        global curr_num_neighbors
+        global curr_i
+        curr_num_neighbors = num_neighbors
+        i = 0
+        while i + num_neighbors <= len(postfix):
+            curr_i = i
+            # print("len", len(postfix), "range", i, i + num_neighbors)
+            yield postfix[i:i + num_neighbors]
+            i += 1
+    def replace_at(new):
+        global curr_num_neighbors
+        global curr_i
+        postfix[curr_i:curr_i + curr_num_neighbors] = new
     op_type = postfix_op_type
     operand = postfix_operand
     postfix = list(postfix)
-    for i in range(len(postfix) - 2):
-        # look at 3 operations at a time, and try to find optimizations
-        peephole = postfix[i:i + 3]
+
+    # look for two loads to the same location, followed by adding them together
+    # replace with one load, one add
+    for peephole in group_iterate(3):
         a, b, c = peephole
-        # print("op_type", op_type(a))
         if op_type(a) == "load" and op_type(b) == "load" and \
-            op_type(c) == "+" and operand(a) == operand(b):
+                op_type(c) == "+" and operand(a) == operand(b):
             peephole = [a, "self+"]
-            postfix[i:i + 3] = peephole
+            replace_at(peephole)
+    # look for an add where one operand is a small constant
+    for peephole in group_iterate(3):
+        a, b, c = peephole
+        if op_type(a) == "set" and within_5bit_twos_complement(operand(a)) and \
+                op_type(c) == "+":
+            peephole = [b, ("imm+", operand(a))]
+            replace_at(peephole)
+        elif op_type(b) == "set" and within_5bit_twos_complement(operand(b)) and \
+                op_type(c) == "+":
+            peephole = [a, ("imm+", operand(b))]
+            replace_at(peephole)
+    # print(postfix)
     return postfix
 
 def postfix_max_depth(postfix):
@@ -327,6 +499,8 @@ def postfix_max_depth(postfix):
         typ = postfix_op_type(op)
         if typ == "load":
             depth += 1
+        elif typ == "set":
+            depth += 1
         elif typ == "+":
             # take two off, put one on
             depth -= 1
@@ -334,7 +508,13 @@ def postfix_max_depth(postfix):
             # take two off, put one on
             depth -= 1
         elif typ == "self+":
+            # take one off, put one on
             depth += 0
+        elif typ == "imm+":
+            # take one off, put one on
+            depth += 0
+        elif typ == ">" or typ == ">":
+            raise Exception("Cannot handle compare in arbitrary expression, only in if")
         else:
             raise Exception("Unknown op %s\n\nFull postfix: %s" % (repr(op), postfix))
         max_depth = max(depth, max_depth)
@@ -352,6 +532,9 @@ def postfix_to_asm(postfix, variables):
             var_name = postfix_operand(op)
             location = variables[var_name]
             a += asm("LDR R%d, R5, #%d" % (depth, location))
+        elif typ == "set":
+            depth += 1
+            a += set_register(depth, postfix_operand(op))
         elif typ == "+":
             depth -= 1
             a += asm("ADD R%d, R%d, R%d" % (depth, depth, depth + 1))
@@ -367,6 +550,10 @@ def postfix_to_asm(postfix, variables):
         elif typ == "self+":
             depth += 0
             a += asm("ADD R%d, R%d, R%d" % (depth, depth, depth))
+        elif typ == "imm+":
+            depth += 0
+            imm = postfix_operand(op)
+            a += asm("ADD R%d, R%d, #%d" % (depth, depth, imm))
         else:
             a += undefined(op)
     return a
@@ -388,20 +575,21 @@ def postfix_op_type(op):
 
 def set_register(regnum, value, explain=None):
     a = []
-    # start by zeroing the register
-    a += asm(".ZERO R%d" % regnum)
+    if value is None:
+        raise Exception("cannot set register %d to None, explain=%s"
+            % (regnum, explain))
     if value == 0:
+        a += asm(".ZERO R%d" % regnum)
         return a
-    if -(2**4) <= value <= (2**4)-1:
-        # The value can be represented in five bit
-        # two's complement
+    if within_5bit_twos_complement(value):
+        # start by zeroing the register
+        a += asm(".ZERO R%d" % regnum)
+        # Then add the value to zero
         a += asm("ADD R%d, R%d, #%d" % (regnum, regnum, value))
         return a
     a += asm("LD R%d, imm%x" % (regnum, value))
-    if explain is None:
-        a += asm("$DEFER imm%x .FILL 0x%x" % (value, value))
-    else:
-        a += asm("$DEFER imm%x .FILL 0x%x ; %s" % (value, value, explain))
+    explain_str = " ; %s" % explain if explain is not None else ""
+    a += asm("$DEFER imm%x .FILL 0x%x%s" % (value, value, explain_str))
     # print("set_register", a)
     return a
     # return [undefined("cannot set R%d to %s" % (regnum, value))]
@@ -420,6 +608,10 @@ def parse_int_literal(literal):
         return int(literal)
     except ValueError:
         pass
+    try:
+        return int(literal, 16)
+    except ValueError:
+        pass
     if literal[0] == literal[-1] == "'":
         assert 3 <= len(literal) <= 4
         without_quotes = literal[1:-1]
@@ -428,6 +620,7 @@ def parse_int_literal(literal):
         value = ord(value[0])
         # print("char constant is '%s' (dec %d)" % (chr(value), value))
         return value
+    raise Exception("Cannot parse literal: " + literal)
 
 ####################
 # GENERAL
@@ -444,7 +637,7 @@ def emit_all(ast):
             func = []
             # generate code for body to find out
             # how much stack space we need
-            body, frame_size = block_emit(node)
+            body, frame_size = emit_block(node.body, name)
             ret_value_slot = has_ret_value_slot(name)
             func += function_prologue(name, frame_size, ret_value_slot)
             func += body
