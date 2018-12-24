@@ -228,15 +228,16 @@ def emit_if(statement, function_name, variables):
     cond_typ = type(cond)
     else_clause = statement.iffalse is not None
     if is_explicit_if(cond):
-        print(cond)
         rhs_zero = has_zero_operand(cond, rhs=True)
         lhs_zero = has_zero_operand(cond, rhs=False)
+
+        # Presently, the compiler does not support a comparison like
+        # a > b. If you need to do this, rewrite it as a - b > 0.
         if not lhs_zero and not rhs_zero:
            raise Exception("Cannot have non-zero value on both sides of compare")
         # if statement is like 0 > a, rewrite it as a < 0
         if lhs_zero and not rhs_zero:
            cond = swap_compare_operands(cond)
-        print(cond)
         # assert right hand side has zero
         assert has_zero_operand(cond, rhs=True)
         # We're going to compute the left hand side of this expression,
@@ -318,12 +319,12 @@ def compare_type_to_branch_type(op):
     ZERO = 2
     POS  = 1
     branch_type = {
-        '>'  : POS,
-        '<'  : NEG,
-        '>=' : ZERO | POS,
-        '<=' : NEG | ZERO,
-        '==' : ZERO,
-        '!=' : NEG | POS,
+        '>'  :              POS,
+        '<'  : NEG             ,
+        '>=' :       ZERO | POS,
+        '<=' : NEG | ZERO      ,
+        '==' :       ZERO      ,
+        '!=' : NEG |        POS,
     }
     return branch_type[op]
 
@@ -513,7 +514,7 @@ def postfix_max_depth(postfix):
         elif typ == "imm+":
             # take one off, put one on
             depth += 0
-        elif typ == ">" or typ == ">":
+        elif typ == "<" or typ == ">":
             raise Exception("Cannot handle compare in arbitrary expression, only in if")
         else:
             raise Exception("Unknown op %s\n\nFull postfix: %s" % (repr(op), postfix))
