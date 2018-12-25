@@ -688,9 +688,10 @@ def set_register(regnum, value, explain=None):
         # Then add the value to zero
         a += asm("ADD R%d, R%d, #%d" % (regnum, regnum, value))
         return a
-    a += asm("LD R%d, imm%x" % (regnum, value))
+    label = reserve_label("imm%x" % value)
+    a += asm("LD R%d, %s" % (regnum, label))
     explain_str = " ; %s" % explain if explain is not None else ""
-    a += asm("$DEFER imm%x .FILL 0x%x%s" % (value, value, explain_str))
+    a += asm("$DEFER %s .FILL 0x%x%s" % (label, value, explain_str))
     # print("set_register", a)
     return a
     # return [undefined("cannot set R%d to %s" % (regnum, value))]
