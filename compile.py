@@ -242,7 +242,7 @@ def emit_statement(statement, function_name, variables, max_frame_size=0):
         a += add_a
         max_frame_size = max(max_frame_size, new_frame_size)
     else:
-        a += undefined(statement)
+        raise Exception("cannot emit code for %s" % statement)
     return a, max_frame_size
 
 def emit_for(statement, function_name, variables):
