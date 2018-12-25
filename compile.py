@@ -185,7 +185,7 @@ def emit_block(node, function_name):
             raise
     frame_size = len(variables)
     max_frame_size = max(frame_size, max_frame_size)
-    return a, frame_size
+    return a, max_frame_size
 
 def emit_statement(statement, function_name, variables, max_frame_size=0):
     a = []
