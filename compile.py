@@ -177,44 +177,8 @@ def emit_block(node, function_name):
 
     for statement in node.block_items:
         try:
-            typ = type(statement)
-            if typ == c_ast.FuncCall:
-                name = statement.name.name
-                location = statement.coord
-                ret_value_slot = has_ret_value_slot(name, statement.coord)
-                args = statement.args.exprs
-                a += call_function(name, args, ret_value_slot, variables)
-            elif typ == c_ast.Decl:
-                # stack grows downward
-                location = -(len(variables) + 1)
-                variables[statement.name] = location
-                if statement.init is not None:
-                    a += emit_rvalue_expression(statement.init, variables, statement)
-                    a += store_register_fp_rel(0, location)
-            elif typ == c_ast.Assignment:
-                lhs = statement.lvalue
-                rhs = statement.rvalue
-                lhs_typ = type(lhs)
-                rhs_typ = type(rhs)
-
-                a += emit_rvalue_expression(rhs, variables, statement)
-
-                # store to left side
-                if lhs_typ == c_ast.ID:
-                    location_lhs = variables[lhs.name]
-                    a += store_register_fp_rel(0, location_lhs)
-                else:
-                    a += undefined(statement)
-            elif typ == c_ast.If:
-                add_a, new_frame_size = emit_if(statement, function_name, variables)
-                a += add_a
-                max_frame_size = max(new_frame_size, max_frame_size)
-            elif typ == c_ast.For:
-                add_a, new_frame_size = emit_for(statement, function_name, variables)
-                a += add_a
-                max_frame_size = max(new_frame_size, max_frame_size)
-            else:
-                a += undefined(statement)
+            add_a, max_frame_size = emit_statement(statement, function_name, variables, max_frame_size)
+            a += add_a
         except AttributeError:
             print("Attempted to translate:")
             print(statement)
@@ -223,12 +187,99 @@ def emit_block(node, function_name):
     max_frame_size = max(frame_size, max_frame_size)
     return a, frame_size
 
+def emit_statement(statement, function_name, variables, max_frame_size=0):
+    a = []
+    typ = type(statement)
+    if typ == c_ast.FuncCall:
+        name = statement.name.name
+        location = statement.coord
+        ret_value_slot = has_ret_value_slot(name, statement.coord)
+        args = statement.args.exprs
+        a += call_function(name, args, ret_value_slot, variables)
+    elif typ == c_ast.Decl:
+        # stack grows downward
+        location = -(len(variables) + 1)
+        variables[statement.name] = location
+        if statement.init is not None:
+            a += emit_rvalue_expression(statement.init, variables)
+            a += store_register_fp_rel(0, location)
+        # update frame size
+        max_frame_size = max(max_frame_size, len(variables))
+    elif typ == c_ast.Assignment:
+        lhs = statement.lvalue
+        rhs = statement.rvalue
+        lhs_typ = type(lhs)
+        rhs_typ = type(rhs)
+
+        a += emit_rvalue_expression(rhs, variables)
+
+        # store to left side
+        if lhs_typ == c_ast.ID:
+            location_lhs = variables[lhs.name]
+            a += store_register_fp_rel(0, location_lhs)
+        else:
+            a += undefined(statement)
+    elif typ == c_ast.UnaryOp:
+        # For handling i++
+        a += emit_rvalue_expression(statement, variables)
+    elif typ == c_ast.If:
+        add_a, new_frame_size = emit_if(statement, function_name, variables)
+        a += add_a
+        max_frame_size = max(max_frame_size, new_frame_size)
+    elif typ == c_ast.For:
+        add_a, new_frame_size = emit_for(statement, function_name, variables)
+        a += add_a
+        max_frame_size = max(max_frame_size, new_frame_size)
+    elif typ == c_ast.While:
+        add_a, new_frame_size = emit_while(statement, function_name, variables)
+        a += add_a
+        max_frame_size = max(max_frame_size, new_frame_size)
+    else:
+        a += undefined(statement)
+    return a, max_frame_size
+
 def emit_for(statement, function_name, variables):
     return emit_loop(function_name, variables, \
-        statement.init, statement.cond, statement.next, True)
+        statement.init, statement.cond, statement.stmt, statement.next, "for", True)
 
-def emit_loop(function_name, variables, init, cond, next, check_cond_first_loop):
-    pass
+def emit_while(statement, function_name, variables):
+    return emit_loop(function_name, variables, \
+        None, statement.cond, statement.stmt, None, "while", True)
+
+def emit_do_while(statement, function_name, variables):
+    return emit_loop(function_name, variables, \
+        None, statement.cond, statement.stmt, None, "dowhile", False)
+
+def emit_loop(function_name, variables, init, cond, body, next_, \
+        loop_type, check_cond_first_loop):
+    # Loops are structured like this
+    # Init code (optional)
+    # Jump to start of condition test (optional)
+    #  Body of loop
+    #  Statement executed every time the loop runs
+    #  Condition test
+    # Branch back to top if condition still true
+    statement = None # don't use statment unintentionally
+    max_frame_size = 0
+    a = []
+    if init is not None:
+        # start by initializing the loop variable
+        add_a, _ = emit_statement(init, function_name, variables)
+        a += add_a
+    begin_label = reserve_label("%s_%s_begin" % (function_name, loop_type))
+    cond_label  = reserve_label("%s_%s_cond" % (function_name, loop_type))
+    if check_cond_first_loop:
+        a += asm("BR %s" % cond_label)
+    a += asm("%s" % begin_label)
+    add_a, _ = emit_block(body, function_name)
+    a += add_a
+    if next_ is not None:
+        add_a, _ = emit_statement(next_, function_name, variables)
+        a += add_a
+    if check_cond_first_loop:
+        a += asm("%s" % cond_label)
+    a += emit_cond(function_name, variables, cond, begin_label, invert_sense=False)
+    return a, max_frame_size
 
 def emit_if(statement, function_name, variables):
     a = []
@@ -245,7 +296,7 @@ def emit_if(statement, function_name, variables):
     # We want to take the branch past the iftrue block if the condition
     # is *not* true. Therefore, we should invert the branch type, by passing
     # invert_sense=True. If it was 'zp' before, it is 'n' now.
-    a += emit_cond(statement, function_name, variables, statement.cond, label_endif, True)
+    a += emit_cond(function_name, variables, statement.cond, label_endif, True)
     add_a, new_frame_size = emit_block(statement.iftrue, function_name)
     a += add_a
     max_frame_size = new_frame_size
@@ -263,7 +314,7 @@ def emit_if(statement, function_name, variables):
         a += asm("%s" % label_endelse)
     return a, max_frame_size
 
-def emit_cond(statement, function_name, variables, cond, label, invert_sense=False):
+def emit_cond(function_name, variables, cond, label, invert_sense=False):
     a = []
     if is_explicit_if(cond):
         rhs_zero = has_zero_operand(cond, rhs=True)
@@ -281,13 +332,13 @@ def emit_cond(statement, function_name, variables, cond, label, invert_sense=Fal
         # We're going to compute the left hand side of this expression,
         # then branch on that being negative, zero, positive, or some
         # combination of those
-        a += emit_rvalue_expression(cond.left, variables, statement)
+        a += emit_rvalue_expression(cond.left, variables)
         branch_type = compare_type_to_branch_type(cond.op)
 
         if invert_sense:
             branch_type = invert_branch_type(branch_type)
     else:
-        a += emit_rvalue_expression(cond, variables, statement)
+        a += emit_rvalue_expression(cond, variables)
         branch_type = ZERO
     a += asm("BR%s %s" % (branch_type_to_shorthand(branch_type), label))
     return a
@@ -430,7 +481,7 @@ def process_deferrals(asm):
 ###################
 # EXPRESSION
 
-def emit_rvalue_expression(node, variables, statement):
+def emit_rvalue_expression(node, variables, statement=None):
     a = []
     typ = type(node)
     postfix = postfix_traverse(node)
@@ -452,7 +503,11 @@ def postfix_traverse(node):
     elif typ == c_ast.Constant:
         return [("set", parse_int_literal(node.value))]
     elif typ == c_ast.UnaryOp:
-        return postfix_traverse(node.expr) + [node.op]
+        if node.op in ["p++", "++p", "p--", "--p"]:
+            assert type(node.expr) == c_ast.ID
+            return [(node.op, node.expr.name)]
+        else:
+            return postfix_traverse(node.expr) + [node.op]
     elif typ == c_ast.BinaryOp:
         return postfix_traverse(node.left)  + \
                postfix_traverse(node.right) + [node.op]
@@ -523,6 +578,15 @@ def postfix_max_depth(postfix):
         elif typ == "imm+":
             # take one off, put one on
             depth += 0
+        elif typ == "p++":
+            # postincrement
+            depth += 1
+        elif typ == "++p":
+            depth += 1
+        elif typ == "p--":
+            depth += 1
+        elif typ == "--p":
+            depth += 1
         elif typ == "<" or typ == ">":
             raise Exception("Cannot handle compare in arbitrary expression, only in if")
         else:
@@ -557,6 +621,19 @@ def postfix_to_asm(postfix, variables):
             a += asm("ADD R%d, R%d, R%d" % (depth, depth, depth + 1))
             # now add 1
             a += asm("ADD R%d, R%d, #1" % (depth, depth))
+        elif typ == "p++":
+            depth += 1
+            var_name = postfix_operand(op)
+            location = variables[var_name]
+            # load variable from stack
+            a += asm("LDR R%d, R5, #%d" % (depth, location))
+            # add 1
+            a += asm("ADD R%d, R%d, #1" % (depth, depth))
+            # store it back to the stack
+            a += asm("STR R%d, R5, #%d" % (depth, location))
+            # subtract 1, because we were asked for the value of the variable
+            # before the addition
+            a += asm("ADD R%d, R%d, #-1" % (depth, depth))
         elif typ == "self+":
             depth += 0
             a += asm("ADD R%d, R%d, R%d" % (depth, depth, depth))
