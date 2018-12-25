@@ -165,14 +165,15 @@ def function_epilogue(name, frame_size=0, ret_value_slot=True):
     a += asm("RET")
     return a
 
-def emit_block(node, function_name):
+def emit_block(node, function_name, variables=None):
     if node.block_items is None:
         # an empty function requires no space
         frame_size = 0
         return [], frame_size
 
     a = []
-    variables = {}
+    if variables is None:
+        variables = {}
     max_frame_size = 0
 
     for statement in node.block_items:
@@ -257,7 +258,7 @@ def emit_do_while(statement, function_name, variables):
     return emit_loop(function_name, variables, \
         None, statement.cond, statement.stmt, None, "dowhile", False)
 
-def emit_loop(function_name, variables, init, cond, body, next_, \
+def emit_loop(function_name, old_scope, init, cond, body, next_, \
         loop_type, check_cond_first_loop):
     # Loops are structured like this
     # Init code (optional)
@@ -269,27 +270,38 @@ def emit_loop(function_name, variables, init, cond, body, next_, \
     statement = None # don't use statment unintentionally
     max_frame_size = 0
     a = []
+    # Copy old variables into new scope. If we define new variables in
+    # this block, they die when the if ends
+    variables = dict(old_scope)
     if init is not None:
         # start by initializing the loop variable
-        add_a, _ = emit_statement(init, function_name, variables)
+        add_a, new_frame_size = emit_statement(init, function_name, variables)
+        max_frame_size = max(max_frame_size, new_frame_size)
         a += add_a
     begin_label = reserve_label("%s_%s_begin" % (function_name, loop_type))
     cond_label  = reserve_label("%s_%s_cond" % (function_name, loop_type))
     if check_cond_first_loop:
         a += asm("BR %s" % cond_label)
     a += asm("%s" % begin_label)
-    add_a, _ = emit_block(body, function_name)
+    add_a, new_frame_size = emit_block(body, function_name, variables)
+    max_frame_size = max(max_frame_size, new_frame_size)
     a += add_a
     if next_ is not None:
-        add_a, _ = emit_statement(next_, function_name, variables)
+        add_a, new_frame_size = emit_statement(next_, function_name, variables)
+        max_frame_size = max(max_frame_size, new_frame_size)
         a += add_a
     if check_cond_first_loop:
         a += asm("%s" % cond_label)
     a += emit_cond(function_name, variables, cond, begin_label, invert_sense=False)
     return a, max_frame_size
 
-def emit_if(statement, function_name, variables):
+def emit_if(statement, function_name, old_scope):
     a = []
+    # Copy old variables into new scope. If we define new variables in
+    # this block, they die when the if ends
+    if_variables = dict(old_scope)
+    else_variables = dict(old_scope)
+
     # check how much stack space the if block takes
     # then how much stack space the else takes
     # return the maximum of the two
@@ -303,8 +315,8 @@ def emit_if(statement, function_name, variables):
     # We want to take the branch past the iftrue block if the condition
     # is *not* true. Therefore, we should invert the branch type, by passing
     # invert_sense=True. If it was 'zp' before, it is 'n' now.
-    a += emit_cond(function_name, variables, statement.cond, label_endif, True)
-    add_a, new_frame_size = emit_block(statement.iftrue, function_name)
+    a += emit_cond(function_name, old_scope, statement.cond, label_endif, True)
+    add_a, new_frame_size = emit_block(statement.iftrue, function_name, if_variables)
     a += add_a
     max_frame_size = new_frame_size
     a += asm("%s" % label_endif)
@@ -315,7 +327,7 @@ def emit_if(statement, function_name, variables):
         # Jump past the else clause
         label_endelse = reserve_label("%s_skipelse" % function_name)
         a += asm("BR %s" % label_endelse)
-        add_a, new_frame_size = emit_block(statement.iffalse, function_name)
+        add_a, new_frame_size = emit_block(statement.iffalse, function_name, else_clause)
         max_frame_size = max(max_frame_size, new_frame_size)
         a += add_a
         a += asm("%s" % label_endelse)
