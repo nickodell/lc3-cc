@@ -550,6 +550,13 @@ def postfix_optimize(postfix):
                 op_type(c) == "+" and operand(a) == operand(b):
             peephole = [a, "self+"]
             replace_at(peephole)
+    # look for a subtract where the right side is a constant
+    # replace with adding the negative of that constant
+    for peephole in group_iterate(2):
+        b, c = peephole
+        if op_type(b) == "set" and op_type(c) == "-":
+            peephole = [("set", -operand(b)), "+"]
+            replace_at(peephole)
     # look for an add where one operand is a small constant
     for peephole in group_iterate(3):
         a, b, c = peephole
