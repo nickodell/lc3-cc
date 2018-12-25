@@ -228,8 +228,10 @@ def emit_statement(statement, function_name, variables, max_frame_size=0):
         else:
             a += undefined(statement)
     elif typ == c_ast.UnaryOp:
-        # For handling i++
-        a += emit_rvalue_expression(statement, variables)
+        # For handling incrementors.
+        # Set value_used to false, because we aren't assigning the output to
+        # anything. This unlocks optimizations.
+        a += emit_rvalue_expression(statement, variables, value_used=False)
     elif typ == c_ast.If:
         add_a, new_frame_size = emit_if(statement, function_name, variables)
         a += add_a
@@ -500,11 +502,11 @@ def process_deferrals(asm):
 ###################
 # EXPRESSION
 
-def emit_rvalue_expression(node, variables, statement=None):
+def emit_rvalue_expression(node, variables, value_used=True):
     a = []
     typ = type(node)
     postfix = postfix_traverse(node)
-    postfix = postfix_optimize(postfix)
+    postfix = postfix_optimize(postfix, value_used)
     max_depth = postfix_max_depth(postfix)
     if max_depth > 5:
         raise Exception("Expression too complicated, register spill")
@@ -522,7 +524,7 @@ def postfix_traverse(node):
     elif typ == c_ast.Constant:
         return [("set", parse_int_literal(node.value))]
     elif typ == c_ast.UnaryOp:
-        if node.op in ["p++", "++p", "p--", "--p"]:
+        if node.op in ["p++", "++", "p--", "--"]:
             assert type(node.expr) == c_ast.ID
             return [(node.op, node.expr.name)]
         else:
@@ -533,7 +535,7 @@ def postfix_traverse(node):
     else:
         raise Exception("Error parsing expression: unknown op type " + str(typ))
 
-def postfix_optimize(postfix):
+def postfix_optimize(postfix, value_used):
     curr_num_neighbors = 0
     curr_i = 0
     def group_iterate(num_neighbors):
@@ -554,6 +556,13 @@ def postfix_optimize(postfix):
     operand = postfix_operand
     postfix = list(postfix)
 
+    # preincrement is more efficient that postincrement, but
+    # only change it if no-one is using the return value
+    if not value_used:
+        if op_type(postfix[-1]) == "p++":
+            postfix[-1] = ("++", operand(postfix[-1]))
+        elif op_type(postfix[-1]) == "p--":
+            postfix[-1] = ("--", operand(postfix[-1]))
     # look for two loads to the same location, followed by adding them together
     # replace with one load, one add
     for peephole in group_iterate(3):
@@ -607,11 +616,12 @@ def postfix_max_depth(postfix):
         elif typ == "p++":
             # postincrement
             depth += 1
-        elif typ == "++p":
+        elif typ == "++":
+            # preincrement
             depth += 1
         elif typ == "p--":
             depth += 1
-        elif typ == "--p":
+        elif typ == "--":
             depth += 1
         elif typ == "<" or typ == ">":
             raise Exception("Cannot handle compare in arbitrary expression, only in if")
@@ -647,19 +657,24 @@ def postfix_to_asm(postfix, variables):
             a += asm("ADD R%d, R%d, R%d" % (depth, depth, depth + 1))
             # now add 1
             a += asm("ADD R%d, R%d, #1" % (depth, depth))
-        elif typ == "p++":
+        elif typ in ["p++", "++", "p--", "--"]:
             depth += 1
             var_name = postfix_operand(op)
-            location = variables[var_name]
-            # load variable from stack
-            a += asm("LDR R%d, R5, #%d" % (depth, location))
-            # add 1
-            a += asm("ADD R%d, R%d, #1" % (depth, depth))
-            # store it back to the stack
-            a += asm("STR R%d, R5, #%d" % (depth, location))
-            # subtract 1, because we were asked for the value of the variable
-            # before the addition
-            a += asm("ADD R%d, R%d, #-1" % (depth, depth))
+            try:
+                location = variables[var_name]
+            except KeyError:
+                raise Exception("Unknown var %s, scoped variables are %s\nOp: %s" % 
+                    (var_name, variables, op))
+            if typ == "p++":
+                a += emit_incrementor(location, depth, True, True)
+            elif typ == "++":
+                a += emit_incrementor(location, depth, False, True)
+            elif typ == "p--":
+                a += emit_incrementor(location, depth, True, False)
+            elif typ == "--":
+                a += emit_incrementor(location, depth, False, False)
+            else:
+                raise Exception()
         elif typ == "self+":
             depth += 0
             a += asm("ADD R%d, R%d, R%d" % (depth, depth, depth))
@@ -670,6 +685,28 @@ def postfix_to_asm(postfix, variables):
         else:
             a += undefined(op)
     return a
+
+def emit_incrementor(location, regnum, post, increment):
+    a = []
+    # load variable from stack
+    a += asm("LDR R%d, R5, #%d" % (regnum, location))
+    if increment:
+        # add 1
+        a += asm("ADD R%d, R%d, #1" % (regnum, regnum))
+    else:
+        # sub 1
+        a += asm("ADD R%d, R%d, #-1" % (regnum, regnum))
+    # store it back to the stack
+    a += asm("STR R%d, R5, #%d" % (regnum, location))
+    if post:
+        # Undo what we just did, because we were asked for 
+        # the value of the variable before the addition.
+        if increment:
+            a += asm("ADD R%d, R%d, #-1" % (regnum, regnum))
+        else:
+            a += asm("ADD R%d, R%d, #1" % (regnum, regnum))
+    return a
+
 
 def postfix_operand(op):
     if type(op) == tuple:
