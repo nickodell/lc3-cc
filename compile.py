@@ -200,11 +200,18 @@ def emit_statement(statement, function_name, variables, max_frame_size=0):
         # stack grows downward
         location = -(len(variables) + 1)
         variables[statement.name] = location
+        # print("defined var", statement.name, "at", location)
         if statement.init is not None:
             a += emit_rvalue_expression(statement.init, variables)
             a += store_register_fp_rel(0, location)
         # update frame size
         max_frame_size = max(max_frame_size, len(variables))
+    elif typ == c_ast.DeclList:
+        # process each Decl
+        for decl in statement.decls:
+            add_a, new_frame_size = emit_statement(decl, function_name, variables)
+            max_frame_size = max(max_frame_size, new_frame_size)
+            a += add_a
     elif typ == c_ast.Assignment:
         lhs = statement.lvalue
         rhs = statement.rvalue
