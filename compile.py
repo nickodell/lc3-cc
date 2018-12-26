@@ -454,8 +454,8 @@ def load_arguments_to_stack(args_preprocessed):
     for argument in reversed(args_preprocessed):
         source, contents, original_arg = argument
         if source == "stack":
-            offset = contents
-            a += asm("LDR R0, R5, #%d" % offset)
+            location = contents
+            a += load_register_fp_rel(0, location)
         elif source == "constant":
             imm = parse_int_literal(contents)
             a += set_register(0, imm, get_explanation(original_arg))
@@ -469,9 +469,9 @@ def load_arguments_to_registers(args_preprocessed):
     for regnum, argument in enumerate(args_preprocessed):
         source, contents, original_arg = argument
         if source == "stack":
-            offset = contents
+            location = contents
             assert regnum <= 4
-            a += asm("LDR R%d, R5, #%d" % (regnum, offset))
+            a += load_register_fp_rel(regnum, location)
         elif source == "constant":
             imm = parse_int_literal(contents)
             a += set_register(regnum, imm, get_explanation(original_arg))
@@ -689,7 +689,7 @@ def postfix_to_asm(postfix, variables):
 def emit_incrementor(location, regnum, post, increment):
     a = []
     # load variable from stack
-    a += asm("LDR R%d, R5, #%d" % (regnum, location))
+    a += load_register_fp_rel(regnum, location)
     if increment:
         # add 1
         a += asm("ADD R%d, R%d, #1" % (regnum, regnum))
@@ -697,7 +697,7 @@ def emit_incrementor(location, regnum, post, increment):
         # sub 1
         a += asm("ADD R%d, R%d, #-1" % (regnum, regnum))
     # store it back to the stack
-    a += asm("STR R%d, R5, #%d" % (regnum, location))
+    a += store_register_fp_rel(regnum, location)
     if post:
         # Undo what we just did, because we were asked for 
         # the value of the variable before the addition.
