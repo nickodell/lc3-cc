@@ -240,6 +240,13 @@ def emit_statement(statement, function_name, variables, max_frame_size=0):
         add_a, new_frame_size = emit_while(statement, function_name, variables)
         a += add_a
         max_frame_size = max(max_frame_size, new_frame_size)
+    elif typ == c_ast.Return:
+        a += emit_rvalue_expression(statement.expr, variables)
+        # The return value is in R0. The stack looks like this:
+        # prev fp         |  #0 | <- fp
+        # return address  |  #1 |
+        # return value    |  #2 |
+        a += asm("STR R0, R5, #2")
     else:
         raise Exception("cannot emit code for %s" % statement)
     return a, max_frame_size
