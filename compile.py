@@ -524,7 +524,7 @@ def postfix_traverse(node):
     elif typ == c_ast.Constant:
         return [("set", parse_int_literal(node.value))]
     elif typ == c_ast.UnaryOp:
-        if node.op in ["p++", "++", "p--", "--"]:
+        if op_requires_address(node.op):
             assert type(node.expr) == c_ast.ID
             return [(node.op, node.expr.name)]
         else:
@@ -719,6 +719,18 @@ def postfix_op_type(op):
         return op[0]
     else:
         return op
+
+def op_requires_address(op):
+    # Return true if this operation requries the address of the variable,
+    # not just the value of it.
+    if op in ["p++", "++", "p--", "--"]:
+        # Incrementors
+        return True
+    if op == "&":
+        # Address of operator
+        return True
+    return False
+
 
 ####################
 # REGISTER
