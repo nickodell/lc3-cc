@@ -222,11 +222,7 @@ def emit_statement(statement, function_name, variables, max_frame_size=0):
         a += emit_rvalue_expression(rhs, variables)
 
         # store to left side
-        if lhs_typ == c_ast.ID:
-            location_lhs = variables[lhs.name]
-            a += store_register_fp_rel(0, location_lhs)
-        else:
-            a += undefined(statement)
+        a += store_to_lvalue(lhs, variables)
     elif typ == c_ast.UnaryOp:
         # For handling incrementors.
         # Set value_used to false, because we aren't assigning the output to
@@ -502,6 +498,39 @@ def process_deferrals(asm):
 ###################
 # EXPRESSION
 
+def store_to_lvalue(lhs, variables):
+    a = []
+    # Note: Cannot use R0 here, because it contains the value calculated
+    # in emit_rvalue_expression
+    lhs_typ = type(lhs)
+    if lhs_typ == c_ast.ID:
+        # variable
+        location_lhs = variables[lhs.name]
+        a += store_register_fp_rel(0, location_lhs)
+    elif lhs_typ == c_ast.UnaryOp and lhs.op == "*" and type(lhs.expr) == c_ast.ID:
+        # pointer
+        name = lhs.expr.name
+        location = variables[name]
+        # Load to R1, as R0 is in use
+        a += load_register_fp_rel(1, location)
+        # Store R0 in location pointed to by R1
+        a += asm("STR R0, R1, #0")
+    elif lhs_typ == c_ast.ArrayRef and type(lhs.name) == c_ast.ID and \
+            type(lhs.subscript) == c_ast.ID:
+        # array access with variable subscript
+        name_array = lhs.name.name
+        name_subscript = lhs.subscript.name
+        location_array = variables[name_array]
+        location_subscript = variables[name_subscript]
+        # Load to R1 and R2, as R0 is in use
+        a += load_register_fp_rel(1, location_array)
+        a += load_register_fp_rel(2, location_subscript)
+        a += asm("ADD R1, R1, R2")
+        a += asm("STR R0, R1, #0")
+    else:
+        a += undefined("store_to_lvalue:\n\t" + str(lhs))
+    return a
+
 def emit_rvalue_expression(node, variables, value_used=True):
     a = []
     typ = type(node)
@@ -623,6 +652,12 @@ def postfix_max_depth(postfix):
             depth += 1
         elif typ == "--":
             depth += 1
+        elif typ == "&":
+            # put address on stack
+            depth += 1
+        elif typ == "*":
+            # take address off of stack, put value on instead
+            depth += 0
         elif typ == "<" or typ == ">":
             raise Exception("Cannot handle compare in arbitrary expression, only in if")
         else:
@@ -682,6 +717,21 @@ def postfix_to_asm(postfix, variables):
             depth += 0
             imm = postfix_operand(op)
             a += asm("ADD R%d, R%d, #%d" % (depth, depth, imm))
+        elif typ == "&":
+            depth += 1
+            var_name = postfix_operand(op)
+            try:
+                location = variables[var_name]
+            except KeyError:
+                raise Exception("Unknown var %s, scoped variables are %s\nOp: %s" % 
+                    (var_name, variables, op))
+            # We know the fp-relative location of the var, so
+            # put that in our destination register
+            a += asm("ADD R%d, R5, #%d" % (depth, location))
+        elif typ == "*":
+            depth += 0
+            # Take address on stack, then load the value at that address
+            a += asm("LDR R%d, R%d, #0" % (depth, depth))
         else:
             a += undefined(op)
     return a
