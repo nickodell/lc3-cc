@@ -682,8 +682,12 @@ def postfix_to_asm(postfix, variables):
         if typ == "load":
             depth += 1
             var_name = postfix_operand(op)
-            location = variables[var_name]
-            a += asm("LDR R%d, R5, #%d" % (depth, location))
+            try:
+                location = variables[var_name]
+            except KeyError:
+                raise Exception("Unknown var %s, scoped variables are %s" % 
+                    (var_name, list(variables.keys())))
+            a += load_register_fp_rel(depth, location)
         elif typ == "set":
             depth += 1
             a += set_register(depth, postfix_operand(op))
