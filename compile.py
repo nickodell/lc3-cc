@@ -195,10 +195,10 @@ def emit_block(node, function_name, variables=None):
         try:
             add_a, max_frame_size = emit_statement(statement, function_name, variables, max_frame_size)
             a += add_a
-        except AttributeError:
+        except AttributeError as e:
             print("Attempted to translate:")
             print(statement)
-            raise
+            raise e
     frame_size = get_frame_size(variables)
     max_frame_size = max(frame_size, max_frame_size)
     return a, max_frame_size
