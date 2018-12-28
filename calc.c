@@ -33,11 +33,7 @@
 char *hex_digits = "0123456789ABCDEF";
 
 
-#define dec_print_integer(x) c1 = x; FUNC_dec_print_integer();
 
-// parameters, passed by globals
-char *c1;
-short *s1;
 
 
 // FAKERET hex_print(short s) {
