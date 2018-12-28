@@ -484,16 +484,6 @@ def load_arguments_to_registers(args_preprocessed):
             raise Exception()
     return a
 
-def function_frame_size(node):
-    frame_size = 0
-    if node.body.block_items is not None:
-        for statement in node.body.block_items:
-            typ = type(statement)
-            if typ == c_ast.Decl:
-                # True Fact: All variables take up 1 word.
-                frame_size += 1
-    return frame_size
-
 def process_deferrals(asm):
     # print(asm)
     def is_deferred(line):
