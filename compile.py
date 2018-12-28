@@ -859,15 +859,23 @@ def emit_all(ast):
     for node in ast.ext:
         typ = type(node)
         if typ == c_ast.FuncDef:
+            # print(node)
             name = node.decl.name
-            func = []
+            func_typ = node.decl.type
+            args = []
+            if node.decl.type.args is not None:
+                args = [arg.name for arg in node.decl.type.args.params]
+            first_arg_offset = 3
+            arg_locations = {name: i + first_arg_offset \
+                    for i, name in enumerate(args)}
             # generate code for body to find out
             # how much stack space we need
-            body, frame_size = emit_block(node.body, name)
+            body, frame_size = emit_block(node.body, name, arg_locations)
             ret_value_slot = has_ret_value_slot(name)
-            func += function_prologue(name, frame_size, ret_value_slot)
+            func = []
+            func += function_prologue(name, func_typ, frame_size, ret_value_slot)
             func += body
-            func += function_epilogue(name, frame_size, ret_value_slot)
+            func += function_epilogue(name, frame_size)
 
             # move $DEFER statments to end
             process_deferrals(func)
