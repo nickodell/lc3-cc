@@ -63,6 +63,9 @@ def pick_frame_location(variables, var_type):
     new_loc = lowest_used_location - size
     return new_loc
 
+def get_frame_size(variables):
+    return -min(variables.values(), default=0)
+
 ####################
 # INITIALIZATION
 
@@ -196,7 +199,7 @@ def emit_block(node, function_name, variables=None):
             print("Attempted to translate:")
             print(statement)
             raise
-    frame_size = len(variables)
+    frame_size = get_frame_size(variables)
     max_frame_size = max(frame_size, max_frame_size)
     return a, max_frame_size
 
