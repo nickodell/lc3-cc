@@ -458,8 +458,12 @@ def call_function(func_call, variables):
         # call it
         a += asm("JSR " + name)
         # callee cleanup
+        # pop return value
         if ret_value_slot:
             a += asm("POP R0")
+        # pop all parameters
+        if len(args) != 0:
+            a += asm("ADD R6, R6, #%d" % len(args))
     return a
 
 def load_arguments(arguments, variables, stack=True):
