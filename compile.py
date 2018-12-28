@@ -527,6 +527,17 @@ def store_to_lvalue(lhs, variables):
         a += load_register_fp_rel(2, location_subscript)
         a += asm("ADD R1, R1, R2")
         a += asm("STR R0, R1, #0")
+    elif lhs_typ == c_ast.ArrayRef and type(lhs.name) == c_ast.ID and \
+            type(lhs.subscript) == c_ast.Constant:
+        # array access with fixed subscript
+        # significantly simpler
+        name_array = lhs.name.name
+        subscript = parse_int_literal(lhs.subscript.value)
+        location_array = variables[name_array]
+        # Load to R1 and R2, as R0 is in use
+        a += load_register_fp_rel(1, location_array)
+        assert within_5bit_twos_complement(subscript)
+        a += asm("STR R0, R1, #%d" % subscript)
     else:
         a += undefined("store_to_lvalue:\n\t" + str(lhs))
     return a
