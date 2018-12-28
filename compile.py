@@ -438,11 +438,11 @@ def call_function(func_call, variables):
     return a
 
 def load_arguments(arguments, variables, stack=True):
-    args_preprocessed = [preprocess_arg(arg, variables) for arg in arguments]
     if stack:
+        args_preprocessed = [preprocess_arg(arg, variables) for arg in arguments]
         return load_arguments_to_stack(args_preprocessed)
     else:
-        return load_arguments_to_registers(args_preprocessed)
+        return load_arguments_to_registers(arguments, variables)
 
 def preprocess_arg(arg, variables):
     typ = type(arg)
@@ -469,20 +469,12 @@ def load_arguments_to_stack(args_preprocessed):
         a += asm("PUSH R0")
     return a
 
-def load_arguments_to_registers(args_preprocessed):
-    a = []
-    for regnum, argument in enumerate(args_preprocessed):
-        source, contents, original_arg = argument
-        if source == "stack":
-            location = contents
-            assert regnum <= 4
-            a += load_register_fp_rel(regnum, location)
-        elif source == "constant":
-            imm = parse_int_literal(contents)
-            a += set_register(regnum, imm, get_explanation(original_arg))
-        else:
-            raise Exception()
-    return a
+def load_arguments_to_registers(args, variables):
+    # TODO: Add support for multiregister function call.
+    # (Do any traps require this? Research.)
+    assert len(args) == 1
+    # just use the rvalue emit code, since we won't stomp on registers
+    return emit_rvalue_expression(args[0], variables)
 
 def process_deferrals(asm):
     # print(asm)
