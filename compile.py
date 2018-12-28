@@ -388,7 +388,10 @@ def emit_cond(function_name, variables, cond, label, invert_sense=False):
             branch_type = invert_branch_type(branch_type)
     else:
         a += emit_rvalue_expression(cond, variables)
-        branch_type = ZERO
+        branch_type = NEG | POS
+
+        if invert_sense:
+            branch_type = invert_branch_type(branch_type)
     a += asm("BR%s %s" % (branch_type_to_shorthand(branch_type), label))
     return a
 
