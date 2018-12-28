@@ -4,7 +4,7 @@ import inspect
 import itertools
 from pycparser import parse_file, c_ast, c_parser, c_generator
 from collections import namedtuple
-from Scope import Scope
+from Scope import *
 Argument = namedtuple('Argument', 'source contents original_arg ')
 
 function_prototypes = {}
@@ -193,10 +193,10 @@ def emit_block(node, function_name, variables=None):
     for statement in node.block_items:
         try:
             a += emit_statement(statement, function_name, variables)
-        except AttributeError as e:
+        except:
             print("Attempted to translate:")
-            print(statement)
-            raise e
+            print(statement.coord)
+            raise
     return a
 
 def emit_statement(statement, function_name, scope):
@@ -258,6 +258,9 @@ def emit_statement(statement, function_name, scope):
             # return value    |  #2 |
             a += asm("STR R0, R5, #2")
         a += asm("BR %s_ret" % function_name)
+    elif typ == c_ast.Break:
+        label = scope.get_break_label()
+        a += asm("BR %s" % label)
     else:
         raise Exception("cannot emit code for %s" % statement)
     return a
@@ -287,12 +290,13 @@ def emit_loop(function_name, old_scope, init, cond, body, next_, \
     a = []
     # Copy old variables into new scope. If we define new variables in
     # this block, they die when the if ends
-    scope = Scope(old_scope, loop_type)
+    label_prefix = "%s_%s" % (function_name, loop_type)
+    scope = Scope(old_scope, loop_type, True, "%s_break" % label_prefix)
     if init is not None:
         # start by initializing the loop variable
         a += emit_statement(init, function_name, scope)
-    begin_label = reserve_label("%s_%s_begin" % (function_name, loop_type))
-    cond_label  = reserve_label("%s_%s_cond" % (function_name, loop_type))
+    begin_label = reserve_label("%s_begin" % label_prefix)
+    cond_label  = reserve_label("%s_cond" % label_prefix)
 
     # The condition is at the bottom of the loop, so if we're running a for
     # or while loop, jump down to that condition.
@@ -305,14 +309,17 @@ def emit_loop(function_name, old_scope, init, cond, body, next_, \
     if check_cond_first_loop:
         a += asm("%s" % cond_label)
     a += emit_cond(function_name, scope, cond, begin_label, invert_sense=False)
+    if scope.break_prefix_used:
+        # there was a break within the loop, we need to provide a label for it
+        a += asm("%s" % scope.get_break_label())
     return a
 
 def emit_if(statement, function_name, old_scope):
     a = []
     # Copy old variables into new scope. If we define new variables in
     # this block, they die when the if ends
-    if_scope = Scope(old_scope, "if")
-    else_scope = Scope(old_scope, "else")
+    if_scope =   Scope(old_scope, "if",   False)
+    else_scope = Scope(old_scope, "else", False)
 
     # check how much stack space the if block takes
     # then how much stack space the else takes
@@ -894,7 +901,7 @@ def emit_all(ast):
             args = []
             if node.decl.type.args is not None:
                 args = [arg for arg in node.decl.type.args.params]
-            scope = Scope(None, "function")
+            scope = Scope(None, "function", False)
             first_arg_offset = 3
             for i, arg in enumerate(args):
                 location = first_arg_offset + i

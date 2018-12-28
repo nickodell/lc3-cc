@@ -1,9 +1,15 @@
 from pycparser import c_ast
+from compile import reserve_label
 
 class Scope(object):
-    def __init__(self, prev_scope, kind):
+    def __init__(self, prev_scope, kind, is_loop, break_prefix=None):
         self.prev_scope = prev_scope
         self.kind = kind
+        self.is_loop = is_loop
+        self.break_prefix = break_prefix
+        self.break_prefix_used = False
+        if is_loop:
+            assert break_prefix is not None
         if self.prev_scope is not None:
             self.variables = dict(self.prev_scope.variables)
         else:
@@ -49,3 +55,19 @@ class Scope(object):
 
     def get_frame_size(self):
         return self.frame_size
+
+    def get_break_label(self):
+        assert self.is_loop
+        assert self.break_prefix is not None
+        if not self.break_prefix_used:
+            self.break_label = reserve_label(self.break_prefix)
+            self.break_prefix_used = True
+        return self.break_label
+
+    def __str__(self):
+        prev_scope_list = []
+        current_scope = self.prev_scope
+        while current_scope is not None:
+            prev_scope_list.append(current_scope.kind)
+            current_scope = current_scope.prev_scope
+        return "Scope(prev=%s, kind=%s)" % (prev_scope_list, self.kind)
