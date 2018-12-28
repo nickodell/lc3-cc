@@ -543,6 +543,13 @@ def store_to_lvalue(lhs, variables):
 def emit_rvalue_expression(node, variables, value_used=True):
     a = []
     typ = type(node)
+    # special handling for a function call by itself
+    # TODO: allow a function call anywhere in an expression
+    if typ == c_ast.FuncCall:
+        name = node.name.name
+        assert has_ret_value_slot(name), "Function %s has void return type" % name
+        a += call_function(node, variables)
+        return a
     postfix = postfix_traverse(node)
     postfix = postfix_optimize(postfix, value_used)
     max_depth = postfix_max_depth(postfix)
