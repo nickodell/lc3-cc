@@ -163,10 +163,11 @@ def function_prologue(name, func_typ, frame_size=0, ret_value_slot=True):
     a += asm("; end of prologue")
     return a
 
-def function_epilogue(name, frame_size=0, ret_value_slot=True):
+def function_epilogue(name, frame_size):
     # undo everything from prologue
     a = []
     a += asm("; epilogue")
+    a += asm("%s_ret" % name) # TODO: only emit this if theres a return
     if frame_size != 0:
         a += asm("ADD R6, R6, #%d" % frame_size)
     a += asm("POP R5")
