@@ -608,8 +608,13 @@ def postfix_traverse(node):
         return postfix_traverse(node.left)  + \
                postfix_traverse(node.right) + \
                [disambiguate_binary_op(node.op)]
+    elif typ == c_ast.FuncCall:
+        raise Exception("Cannot parse function call in expression!")
+    elif typ == c_ast.ArrayRef:
+        return postfix_traverse(node.name)      + \
+               postfix_traverse(node.subscript) + ["+", "*"]
     else:
-        raise Exception("Error parsing expression: unknown op type " + str(typ))
+        raise Exception("Error parsing expression: unknown op type " + str(node))
 
 def postfix_optimize(postfix, value_used):
     curr_num_neighbors = 0
