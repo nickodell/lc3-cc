@@ -3,6 +3,7 @@ bin
 include
 lib
 pip-selfcheck.json
+__pycache__
 
 # generated
 *.asm

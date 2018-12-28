@@ -4,6 +4,7 @@ import inspect
 import itertools
 from pycparser import parse_file, c_ast, c_parser, c_generator
 from collections import namedtuple
+from Scope import Scope
 Argument = namedtuple('Argument', 'source contents original_arg ')
 
 function_prototypes = {}
@@ -55,16 +56,16 @@ def get_explanation(constant):
 def within_5bit_twos_complement(n):
     return -(2**4) <= n <= (2**4)-1
 
-def pick_frame_location(variables, var_type):
-    size = 1
-    if type(var_type) == c_ast.ArrayDecl:
-        size = parse_int_literal(var_type.dim.value)
-    lowest_used_location = min(variables.values(), default=0)
-    new_loc = lowest_used_location - size
-    return new_loc
+# def pick_frame_location(variables, var_type):
+#     size = 1
+#     if type(var_type) == c_ast.ArrayDecl:
+#         size = parse_int_literal(var_type.dim.value)
+#     lowest_used_location = min(variables.values(), default=0)
+#     new_loc = lowest_used_location - size
+#     return new_loc
 
-def get_frame_size(variables):
-    return -min(variables.values(), default=0)
+# def get_frame_size(variables):
+#     return -min(variables.values(), default=0)
 
 ####################
 # INITIALIZATION
@@ -183,56 +184,46 @@ def function_epilogue(name, frame_size):
 def emit_block(node, function_name, variables=None):
     if node.block_items is None:
         # an empty function requires no space
-        frame_size = 0
-        return [], frame_size
+        return []
 
     a = []
     if variables is None:
         variables = {}
-    max_frame_size = 0
 
     for statement in node.block_items:
         try:
-            add_a, max_frame_size = emit_statement(statement, function_name, variables, max_frame_size)
-            a += add_a
+            a += emit_statement(statement, function_name, variables)
         except AttributeError as e:
             print("Attempted to translate:")
             print(statement)
             raise e
-    frame_size = get_frame_size(variables)
-    max_frame_size = max(frame_size, max_frame_size)
-    return a, max_frame_size
+    return a
 
-def emit_statement(statement, function_name, variables, max_frame_size=0):
+def emit_statement(statement, function_name, scope):
     a = []
     typ = type(statement)
     if typ == c_ast.FuncCall:
-        a += call_function(statement, variables)
+        a += call_function(statement, scope)
     elif typ == c_ast.Decl:
         # stack grows downward
-        location = pick_frame_location(variables, statement.type)
-        variables[statement.name] = location
-        # print("defined var", statement.name, "at", location)
+        scope.define_variable(statement.name, statement.type)
+        location = scope.get_fp_rel_location(statement.name)
         if statement.init is not None:
-            a += emit_rvalue_expression(statement.init, variables)
+            a += emit_rvalue_expression(statement.init, scope)
             a += store_register_fp_rel(0, location)
-        # update frame size
-        max_frame_size = max(max_frame_size, len(variables))
     elif typ == c_ast.DeclList:
         # process each Decl
         for decl in statement.decls:
-            add_a, new_frame_size = emit_statement(decl, function_name, variables)
-            max_frame_size = max(max_frame_size, new_frame_size)
-            a += add_a
+            a += emit_statement(decl, function_name, scope)
     elif typ == c_ast.Assignment:
         if statement.op == "=":
             # find value of right side
             rhs = statement.rvalue
-            a += emit_rvalue_expression(rhs, variables)
+            a += emit_rvalue_expression(rhs, scope)
 
             # store to left side
             lhs = statement.lvalue
-            a += store_to_lvalue(lhs, variables)
+            a += store_to_lvalue(lhs, scope)
         elif statement.op == "&=":
             # rewrite this:
             #    a &= b;
@@ -242,30 +233,25 @@ def emit_statement(statement, function_name, variables, max_frame_size=0):
             lhs = statement.lvalue
             new_rhs = c_ast.BinaryOp("&", lhs, old_rhs, statement.coord)
             new_statement = c_ast.Assignment("=", lhs, new_rhs, statement.coord)
-            return emit_statement(new_statement, function_name, \
-                variables, max_frame_size)
+            return emit_statement(new_statement, function_name, scope)
         else:
             raise Exception("Unknown assignment operator " + statement.op)
     elif typ == c_ast.UnaryOp:
         # For handling incrementors.
         # Set value_used to false, because we aren't assigning the output to
         # anything. This unlocks optimizations.
-        a += emit_rvalue_expression(statement, variables, value_used=False)
+        a += emit_rvalue_expression(statement, scope, value_used=False)
     elif typ == c_ast.If:
-        add_a, new_frame_size = emit_if(statement, function_name, variables)
-        a += add_a
-        max_frame_size = max(max_frame_size, new_frame_size)
+        a += emit_if(statement, function_name, scope)
     elif typ == c_ast.For:
-        add_a, new_frame_size = emit_for(statement, function_name, variables)
-        a += add_a
-        max_frame_size = max(max_frame_size, new_frame_size)
+        a += emit_for(statement, function_name, scope)
     elif typ == c_ast.While:
-        add_a, new_frame_size = emit_while(statement, function_name, variables)
-        a += add_a
-        max_frame_size = max(max_frame_size, new_frame_size)
+        a += emit_while(statement, function_name, scope)
+    elif typ == c_ast.DoWhile:
+        a += emit_do_while(statement, function_name, scope)
     elif typ == c_ast.Return:
         if statement.expr is not None:
-            a += emit_rvalue_expression(statement.expr, variables)
+            a += emit_rvalue_expression(statement.expr, scope)
             # The return value is in R0. The stack looks like this:
             # prev fp         |  #0 | <- fp
             # return address  |  #1 |
@@ -274,18 +260,18 @@ def emit_statement(statement, function_name, variables, max_frame_size=0):
         a += asm("BR %s_ret" % function_name)
     else:
         raise Exception("cannot emit code for %s" % statement)
-    return a, max_frame_size
+    return a
 
-def emit_for(statement, function_name, variables):
-    return emit_loop(function_name, variables, \
+def emit_for(statement, function_name, scope):
+    return emit_loop(function_name, scope, \
         statement.init, statement.cond, statement.stmt, statement.next, "for", True)
 
-def emit_while(statement, function_name, variables):
-    return emit_loop(function_name, variables, \
+def emit_while(statement, function_name, scope):
+    return emit_loop(function_name, scope, \
         None, statement.cond, statement.stmt, None, "while", True)
 
-def emit_do_while(statement, function_name, variables):
-    return emit_loop(function_name, variables, \
+def emit_do_while(statement, function_name, scope):
+    return emit_loop(function_name, scope, \
         None, statement.cond, statement.stmt, None, "dowhile", False)
 
 def emit_loop(function_name, old_scope, init, cond, body, next_, \
@@ -298,44 +284,39 @@ def emit_loop(function_name, old_scope, init, cond, body, next_, \
     #  Condition test
     # Branch back to top if condition still true
     statement = None # don't use statment unintentionally
-    max_frame_size = 0
     a = []
     # Copy old variables into new scope. If we define new variables in
     # this block, they die when the if ends
-    variables = dict(old_scope)
+    scope = Scope(old_scope, loop_type)
     if init is not None:
         # start by initializing the loop variable
-        add_a, new_frame_size = emit_statement(init, function_name, variables)
-        max_frame_size = max(max_frame_size, new_frame_size)
-        a += add_a
+        a += emit_statement(init, function_name, scope)
     begin_label = reserve_label("%s_%s_begin" % (function_name, loop_type))
     cond_label  = reserve_label("%s_%s_cond" % (function_name, loop_type))
+
+    # The condition is at the bottom of the loop, so if we're running a for
+    # or while loop, jump down to that condition.
     if check_cond_first_loop:
         a += asm("BR %s" % cond_label)
     a += asm("%s" % begin_label)
-    add_a, new_frame_size = emit_block(body, function_name, variables)
-    max_frame_size = max(max_frame_size, new_frame_size)
-    a += add_a
+    a += emit_block(body, function_name, scope)
     if next_ is not None:
-        add_a, new_frame_size = emit_statement(next_, function_name, variables)
-        max_frame_size = max(max_frame_size, new_frame_size)
-        a += add_a
+        a += emit_statement(next_, function_name, scope)
     if check_cond_first_loop:
         a += asm("%s" % cond_label)
-    a += emit_cond(function_name, variables, cond, begin_label, invert_sense=False)
-    return a, max_frame_size
+    a += emit_cond(function_name, scope, cond, begin_label, invert_sense=False)
+    return a
 
 def emit_if(statement, function_name, old_scope):
     a = []
     # Copy old variables into new scope. If we define new variables in
     # this block, they die when the if ends
-    if_variables = dict(old_scope)
-    else_variables = dict(old_scope)
+    if_scope = Scope(old_scope, "if")
+    else_scope = Scope(old_scope, "else")
 
     # check how much stack space the if block takes
     # then how much stack space the else takes
     # return the maximum of the two
-    max_frame_size = 0
     else_clause = statement.iffalse is not None
     if else_clause:
         label_endif = reserve_label("%s_else" % function_name)
@@ -346,9 +327,7 @@ def emit_if(statement, function_name, old_scope):
     # is *not* true. Therefore, we should invert the branch type, by passing
     # invert_sense=True. If it was 'zp' before, it is 'n' now.
     a += emit_cond(function_name, old_scope, statement.cond, label_endif, True)
-    add_a, new_frame_size = emit_block(statement.iftrue, function_name, if_variables)
-    a += add_a
-    max_frame_size = new_frame_size
+    a += emit_block(statement.iftrue, function_name, if_scope)
     a += asm("%s" % label_endif)
     if else_clause:
         # If execution has reached this point,
@@ -357,13 +336,11 @@ def emit_if(statement, function_name, old_scope):
         # Jump past the else clause
         label_endelse = reserve_label("%s_skipelse" % function_name)
         a += asm("BR %s" % label_endelse)
-        add_a, new_frame_size = emit_block(statement.iffalse, function_name, else_clause)
-        max_frame_size = max(max_frame_size, new_frame_size)
-        a += add_a
+        a += emit_block(statement.iffalse, function_name, else_scope)
         a += asm("%s" % label_endelse)
-    return a, max_frame_size
+    return a
 
-def emit_cond(function_name, variables, cond, label, invert_sense=False):
+def emit_cond(function_name, scope, cond, label, invert_sense=False):
     a = []
     if is_explicit_if(cond):
         rhs_zero = has_zero_operand(cond, rhs=True)
@@ -381,13 +358,13 @@ def emit_cond(function_name, variables, cond, label, invert_sense=False):
         # We're going to compute the left hand side of this expression,
         # then branch on that being negative, zero, positive, or some
         # combination of those
-        a += emit_rvalue_expression(cond.left, variables)
+        a += emit_rvalue_expression(cond.left, scope)
         branch_type = compare_type_to_branch_type(cond.op)
 
         if invert_sense:
             branch_type = invert_branch_type(branch_type)
     else:
-        a += emit_rvalue_expression(cond, variables)
+        a += emit_rvalue_expression(cond, scope)
         branch_type = NEG | POS
 
         if invert_sense:
@@ -444,7 +421,7 @@ def invert_branch_type(op):
     assert type(op) == int, repr(op) + " is not int"
     return 0b111 - op
 
-def call_function(func_call, variables):
+def call_function(func_call, scope):
     name = func_call.name.name
     location = func_call.coord
     ret_value_slot = has_ret_value_slot(name, func_call.coord)
@@ -457,11 +434,11 @@ def call_function(func_call, variables):
         # All builtins should be called with registers.
         # If it's too complicated to do this, don't implement
         # it as a builtin.
-        a += load_arguments(args, variables, False)
+        a += load_arguments(args, scope, False)
         number_args = len(args)
         a += handle_builtin(name, ret_value_slot, number_args)
     else:
-        a += load_arguments(args, variables, True)
+        a += load_arguments(args, scope, True)
         # call it
         a += asm("JSR " + name)
         # callee cleanup
@@ -473,18 +450,18 @@ def call_function(func_call, variables):
             a += asm("ADD R6, R6, #%d" % len(args))
     return a
 
-def load_arguments(arguments, variables, stack=True):
+def load_arguments(arguments, scope, stack=True):
     if stack:
-        args_preprocessed = [preprocess_arg(arg, variables) for arg in arguments]
+        args_preprocessed = [preprocess_arg(arg, scope) for arg in arguments]
         return load_arguments_to_stack(args_preprocessed)
     else:
-        return load_arguments_to_registers(arguments, variables)
+        return load_arguments_to_registers(arguments, scope)
 
-def preprocess_arg(arg, variables):
+def preprocess_arg(arg, scope):
     typ = type(arg)
     if typ == c_ast.ID:
         name = arg.name
-        return Argument("stack", variables[name], arg)
+        return Argument("stack", scope.get_fp_rel_location(name), arg)
     elif typ == c_ast.Constant:
         return Argument("constant", arg.value, arg)
     raise Exception("Cannot handle arg type: " + str(typ) + "\n"
@@ -505,12 +482,12 @@ def load_arguments_to_stack(args_preprocessed):
         a += asm("PUSH R0")
     return a
 
-def load_arguments_to_registers(args, variables):
+def load_arguments_to_registers(args, scope):
     # TODO: Add support for multiregister function call.
     # (Do any traps require this? Research.)
     assert len(args) == 1
     # just use the rvalue emit code, since we won't stomp on registers
-    return emit_rvalue_expression(args[0], variables)
+    return emit_rvalue_expression(args[0], scope)
 
 def process_deferrals(asm):
     # print(asm)
@@ -525,19 +502,19 @@ def process_deferrals(asm):
 ###################
 # EXPRESSION
 
-def store_to_lvalue(lhs, variables):
+def store_to_lvalue(lhs, scope):
     a = []
     # Note: Cannot use R0 here, because it contains the value calculated
     # in emit_rvalue_expression
     lhs_typ = type(lhs)
     if lhs_typ == c_ast.ID:
         # variable
-        location_lhs = variables[lhs.name]
+        location_lhs = scope.get_fp_rel_location(lhs.name)
         a += store_register_fp_rel(0, location_lhs)
     elif lhs_typ == c_ast.UnaryOp and lhs.op == "*" and type(lhs.expr) == c_ast.ID:
         # pointer
         name = lhs.expr.name
-        location = variables[name]
+        location = scope.get_fp_rel_location(name)
         # Load to R1, as R0 is in use
         a += load_register_fp_rel(1, location)
         # Store R0 in location pointed to by R1
@@ -547,8 +524,8 @@ def store_to_lvalue(lhs, variables):
         # array access with variable subscript
         name_array = lhs.name.name
         name_subscript = lhs.subscript.name
-        location_array = variables[name_array]
-        location_subscript = variables[name_subscript]
+        location_array = scope.get_fp_rel_location(name_array)
+        location_subscript = scope.get_fp_rel_location(name_subscript)
         # Load to R1 and R2, as R0 is in use
         a += load_register_fp_rel(1, location_array)
         a += load_register_fp_rel(2, location_subscript)
@@ -560,7 +537,7 @@ def store_to_lvalue(lhs, variables):
         # significantly simpler
         name_array = lhs.name.name
         subscript = parse_int_literal(lhs.subscript.value)
-        location_array = variables[name_array]
+        location_array = scope.get_fp_rel_location(name_array)
         # Load to R1 and R2, as R0 is in use
         a += load_register_fp_rel(1, location_array)
         assert within_5bit_twos_complement(subscript)
@@ -569,7 +546,7 @@ def store_to_lvalue(lhs, variables):
         a += undefined("store_to_lvalue:\n\t" + str(lhs))
     return a
 
-def emit_rvalue_expression(node, variables, value_used=True):
+def emit_rvalue_expression(node, scope, value_used=True):
     a = []
     typ = type(node)
     # special handling for a function call by itself
@@ -577,7 +554,7 @@ def emit_rvalue_expression(node, variables, value_used=True):
     if typ == c_ast.FuncCall:
         name = node.name.name
         assert has_ret_value_slot(name), "Function %s has void return type" % name
-        a += call_function(node, variables)
+        a += call_function(node, scope)
         return a
     postfix = postfix_traverse(node)
     postfix = postfix_optimize(postfix, value_used)
@@ -585,7 +562,7 @@ def emit_rvalue_expression(node, variables, value_used=True):
     if max_depth > 5:
         raise Exception("Expression too complicated, register spill")
     # print("max_depth", max_depth)
-    a += postfix_to_asm(postfix, variables)
+    a += postfix_to_asm(postfix, scope)
     # a += undefined(postfix)
     return a
 
@@ -596,7 +573,7 @@ def postfix_traverse(node):
         return op
     typ = type(node)
     if typ == c_ast.ID:
-        # location_rhs = variables[node.name]
+        # location_rhs = scope.get_fp_rel_location(node.name)
         # a += load_register_fp_rel(0, location_rhs)
         return [("load", node.name)]
     elif typ == c_ast.Constant:
@@ -725,7 +702,7 @@ def postfix_max_depth(postfix):
             raise Exception(str(op) + " on empty stack!")
     return max_depth
 
-def postfix_to_asm(postfix, variables):
+def postfix_to_asm(postfix, scope):
     a = []
     depth = -1 # depth represents topmost occupied register
     for op in postfix:
@@ -734,10 +711,10 @@ def postfix_to_asm(postfix, variables):
             depth += 1
             var_name = postfix_operand(op)
             try:
-                location = variables[var_name]
+                location = scope.get_fp_rel_location(var_name)
             except KeyError:
-                raise Exception("Unknown var %s, scoped variables are %s" % 
-                    (var_name, list(variables.keys())))
+                raise Exception("Unknown var %s, scoped scope are %s" % 
+                    (var_name, list(scope.keys())))
             a += load_register_fp_rel(depth, location)
         elif typ == "set":
             depth += 1
@@ -761,10 +738,10 @@ def postfix_to_asm(postfix, variables):
             depth += 1
             var_name = postfix_operand(op)
             try:
-                location = variables[var_name]
+                location = scope.get_fp_rel_location(var_name)
             except KeyError:
-                raise Exception("Unknown var %s, scoped variables are %s\nOp: %s" % 
-                    (var_name, variables, op))
+                raise Exception("Unknown var %s, scoped scope are %s\nOp: %s" % 
+                    (var_name, scope, op))
             if typ == "p++":
                 a += emit_incrementor(location, depth, True, True)
             elif typ == "++":
@@ -786,10 +763,10 @@ def postfix_to_asm(postfix, variables):
             depth += 1
             var_name = postfix_operand(op)
             try:
-                location = variables[var_name]
+                location = scope.get_fp_rel_location(var_name)
             except KeyError:
-                raise Exception("Unknown var %s, scoped variables are %s\nOp: %s" % 
-                    (var_name, variables, op))
+                raise Exception("Unknown var %s, scoped scope are %s\nOp: %s" % 
+                    (var_name, scope, op))
             # We know the fp-relative location of the var, so
             # put that in our destination register
             a += asm("ADD R%d, R5, #%d" % (depth, location))
@@ -916,13 +893,16 @@ def emit_all(ast):
             func_typ = node.decl.type
             args = []
             if node.decl.type.args is not None:
-                args = [arg.name for arg in node.decl.type.args.params]
+                args = [arg for arg in node.decl.type.args.params]
+            scope = Scope(None, "function")
             first_arg_offset = 3
-            arg_locations = {name: i + first_arg_offset \
-                    for i, name in enumerate(args)}
+            for i, arg in enumerate(args):
+                location = first_arg_offset + i
+                scope.define_variable(arg.name, arg.type.type, location)
             # generate code for body to find out
             # how much stack space we need
-            body, frame_size = emit_block(node.body, name, arg_locations)
+            body = emit_block(node.body, name, scope)
+            frame_size = scope.get_frame_size()
             ret_value_slot = has_ret_value_slot(name)
             func = []
             func += function_prologue(name, func_typ, frame_size, ret_value_slot)
