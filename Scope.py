@@ -1,5 +1,5 @@
 from pycparser import c_ast
-from compile import reserve_label
+from compile import reserve_label, parse_int_literal
 
 class Scope(object):
     def __init__(self, prev_scope, kind, is_loop, break_prefix=None):
@@ -57,6 +57,8 @@ class Scope(object):
         return self.frame_size
 
     def get_break_label(self):
+        if not self.is_loop and self.prev_scope is not None:
+            return self.prev_scope.get_break_label()
         assert self.is_loop
         assert self.break_prefix is not None
         if not self.break_prefix_used:
