@@ -2,7 +2,7 @@
 import sys
 import inspect
 import itertools
-from pycparser import parse_file, c_ast, c_parser
+from pycparser import parse_file, c_ast, c_parser, c_generator
 from collections import namedtuple
 Argument = namedtuple('Argument', 'source contents original_arg ')
 
@@ -142,8 +142,12 @@ def handle_builtin(name, ret_value_slot, number_args):
 ####################
 # FUNCTION
 
-def function_prologue(name, frame_size=0, ret_value_slot=True):
+def function_prologue(name, func_typ, frame_size=0, ret_value_slot=True):
     a = []
+    # add a comment showing the type of the return value and params
+    a += asm(";" * 30)
+    prototype = c_generator.CGenerator().visit(func_typ)
+    a += asm("; %s" % prototype)
     # give it a label
     a += asm(name)
     if ret_value_slot:
