@@ -879,7 +879,7 @@ def emit_all(ast):
 
 def main(filename):
     add_builtin_prototypes()
-    ast = parse_file(filename, use_cpp=True)
+    ast = parse_file(filename, use_cpp=True, cpp_args="-DLC3")
     # ast.show()
     emit_all(ast)
     sys.exit(error)
