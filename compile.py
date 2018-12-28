@@ -217,15 +217,27 @@ def emit_statement(statement, function_name, variables, max_frame_size=0):
             max_frame_size = max(max_frame_size, new_frame_size)
             a += add_a
     elif typ == c_ast.Assignment:
-        lhs = statement.lvalue
-        rhs = statement.rvalue
-        lhs_typ = type(lhs)
-        rhs_typ = type(rhs)
+        if statement.op == "=":
+            # find value of right side
+            rhs = statement.rvalue
+            a += emit_rvalue_expression(rhs, variables)
 
-        a += emit_rvalue_expression(rhs, variables)
-
-        # store to left side
-        a += store_to_lvalue(lhs, variables)
+            # store to left side
+            lhs = statement.lvalue
+            a += store_to_lvalue(lhs, variables)
+        elif statement.op == "&=":
+            # rewrite this:
+            #    a &= b;
+            # as:
+            #    a = a & b;
+            old_rhs = statement.rvalue
+            lhs = statement.lvalue
+            new_rhs = c_ast.BinaryOp("&", lhs, old_rhs, statement.coord)
+            new_statement = c_ast.Assignment("=", lhs, new_rhs, statement.coord)
+            return emit_statement(new_statement, function_name, \
+                variables, max_frame_size)
+        else:
+            raise Exception("Unknown assignment operator " + statement.op)
     elif typ == c_ast.UnaryOp:
         # For handling incrementors.
         # Set value_used to false, because we aren't assigning the output to
