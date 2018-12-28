@@ -192,11 +192,7 @@ def emit_statement(statement, function_name, variables, max_frame_size=0):
     a = []
     typ = type(statement)
     if typ == c_ast.FuncCall:
-        name = statement.name.name
-        location = statement.coord
-        ret_value_slot = has_ret_value_slot(name, statement.coord)
-        args = statement.args.exprs
-        a += call_function(name, args, ret_value_slot, variables)
+        a += call_function(statement, variables)
     elif typ == c_ast.Decl:
         # stack grows downward
         location = -(len(variables) + 1)
@@ -416,7 +412,13 @@ def invert_branch_type(op):
     assert type(op) == int, repr(op) + " is not int"
     return 0b111 - op
 
-def call_function(name, args, ret_value_slot, variables):
+def call_function(func_call, variables):
+    name = func_call.name.name
+    location = func_call.coord
+    ret_value_slot = has_ret_value_slot(name, func_call.coord)
+    args = []
+    if func_call.args is not None:
+        args = func_call.args.exprs
     a = []
     if is_builtin(name):
         # Load all arguments into registers.
