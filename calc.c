@@ -19,8 +19,6 @@
 #else
 #define ITERATIONS_PER_PRINT 10001
 #endif
-// #define putchar(x)
-#define FAKERET short
 // #define HIGH_BIT_SET(x) (x & 0x8000)
 #define HIGH_BIT_SET(x) (x < 0)
 #define HIGH_BIT_NOT_SET(x) (x >= 0)
@@ -36,7 +34,7 @@ char *hex_digits = "0123456789ABCDEF";
 
 
 
-// FAKERET hex_print(short s) {
+// void hex_print(short s) {
 //     int i, idx;
 //     for(i = 0; i < 4; i++) {
 //         idx = s & 0xF;
@@ -47,7 +45,7 @@ char *hex_digits = "0123456789ABCDEF";
 //     return 0;
 // }
 
-FAKERET my_puts(char *s) {
+void my_puts(char *s) {
     while(*s) {
         putchar(*s);
         s++;
@@ -56,7 +54,7 @@ FAKERET my_puts(char *s) {
 }
 
 
-// FAKERET bignum_zero(short *op) {
+// void bignum_zero(short *op) {
 //     int i;
 //     for(i = BIGNUM_LEN - 1; i >= 0; i--) {
 //     // for(i = BIGNUM_LEN; i >= 0; i--) {
@@ -66,7 +64,7 @@ FAKERET my_puts(char *s) {
 //     return 0;
 // }
 
-FAKERET bignum_copy(short *dest, short *src) {
+void bignum_copy(short *dest, short *src) {
     int i;
     for(i = BIGNUM_LEN - 1; i >= 0; i--) {
         *dest = *src;
@@ -76,7 +74,7 @@ FAKERET bignum_copy(short *dest, short *src) {
     return 0;
 }
 
-// FAKERET bignum_print(short *p) {
+// void bignum_print(short *p) {
 //     int i;
 //     for(i = 0; i < BIGNUM_LEN; i++) {
 //         printf("%4x ", p[i]);
@@ -84,7 +82,7 @@ FAKERET bignum_copy(short *dest, short *src) {
 //     putchar('\n');
 // }
 
-FAKERET bignum_add(short *dest, short *add1) {
+void bignum_add(short *dest, short *add1) {
     bool carry = false;
     int i;
     for(i = BIGNUM_LEN - 1; i >= 0; i--) {
@@ -100,20 +98,20 @@ FAKERET bignum_add(short *dest, short *add1) {
     return 0;
 }
 
-FAKERET bignum_add1(short *op) {
+void bignum_add1(short *op) {
     int i;
     for(i = BIGNUM_LEN - 1; i >= 0; i--) {
         short temp = op[i] + 1;
         // bit 15 reserved
-        op[i] = temp & 0x7FFF;
         if(HIGH_BIT_NOT_SET(temp)) {
             break;
         }
+        op[i] = temp & 0x7FFF;
     }
     return 0;
 }
 
-FAKERET bignum_lshift(short *shift) {
+void bignum_lshift(short *shift) {
     bool carry = false;
     int i;
     for(i = BIGNUM_LEN - 1; i >= 0; i--) {
@@ -136,7 +134,7 @@ FAKERET bignum_lshift(short *shift) {
 //     return (bignum[BIGNUM_LEN - 1 - addr_select] >> bit_select) & 0x1;
 // }
 
-// FAKERET bignum_mul(short *dest, short *mul1, short *mul2) {
+// void bignum_mul(short *dest, short *mul1, short *mul2) {
 //     int i;
 //     bignum_zero(dest);
 //     for(i = 0; i < BIGNUM_BITS_PER_ADDR * BIGNUM_LEN; i++) {
@@ -152,7 +150,7 @@ FAKERET bignum_lshift(short *shift) {
 //     return 0;
 // }
 
-FAKERET bignum_mul10(short *op) {
+void bignum_mul10(short *op) {
     short temp[BIGNUM_LEN];
     // unneeded
     // bignum_zero(temp);
@@ -173,7 +171,7 @@ bool bignum_ge(short *op1, short *op2) {
     return true;
 }
 
-// FAKERET bignum_2c(short *op) {
+// void bignum_2c(short *op) {
 //     int i;
 //     for(i = BIGNUM_LEN - 1; i >= 0; i--) {
 //         op[i] = (~op[i]) & 0x7FFF;
@@ -187,7 +185,7 @@ bool bignum_ge(short *op1, short *op2) {
 //     return (op[0] & 0x4000) != 0;
 // }
 
-FAKERET bignum_sub(short *dest, short *sub) {
+void bignum_sub(short *dest, short *sub) {
     // carry should start false, but starting
     // true adds 1, saving an op
     bool carry = true;
@@ -206,7 +204,7 @@ FAKERET bignum_sub(short *dest, short *sub) {
     return 0;
 }
 
-FAKERET dec_zero(char *op) {
+void dec_zero(char *op) {
     int i;
     for(i = FIX_LEN_TOTAL - 1; i >= 0; i--) {
         *op = 0;
@@ -215,7 +213,7 @@ FAKERET dec_zero(char *op) {
     return 0;
 }
 
-FAKERET dec_add1(char *op) {
+void dec_add1(char *op) {
     bool carry = true;
     int i;
     for(i = FIX_LEN_TOTAL - 1; i >= 0; i--) {
@@ -230,7 +228,7 @@ FAKERET dec_add1(char *op) {
     return 0;
 }
 
-FAKERET dec_2c(char *op) {
+void dec_2c(char *op) {
     int i;
     char *current = op;
     for(i = 0; i < FIX_LEN_TOTAL; i++) {
@@ -242,7 +240,7 @@ FAKERET dec_2c(char *op) {
     return 0;
 }
 
-FAKERET dec_division(char *out, short *num, short *denom) {
+void dec_division(char *out, short *num, short *denom) {
     short num_copy[BIGNUM_LEN];
     short denom_copy[BIGNUM_LEN];
     // bool negative = false;
@@ -275,7 +273,7 @@ FAKERET dec_division(char *out, short *num, short *denom) {
     return 0;
 }
 
-FAKERET dec_add(char *dest, char *add) {
+void dec_add(char *dest, char *add) {
     bool carry = false;
     int i;
     for(i = FIX_LEN_TOTAL - 1; i >= 0; i--) {
@@ -293,7 +291,7 @@ FAKERET dec_add(char *dest, char *add) {
     return 0;
 }
 
-FAKERET dec_print(char *p) {
+void dec_print(char *p) {
     bool negative = false;
     char first = ' ';
     char current;
@@ -321,7 +319,7 @@ FAKERET dec_print(char *p) {
     return 0;
 }
 
-FAKERET dec_print_integer(char *p) {
+void dec_print_integer(char *p) {
     int i = 0;
     bool print = false;
     for(; i < FIX_LEN_TOTAL; i++) {
