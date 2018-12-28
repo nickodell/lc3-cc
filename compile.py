@@ -584,6 +584,10 @@ def emit_rvalue_expression(node, variables, value_used=True):
     return a
 
 def postfix_traverse(node):
+    def disambiguate_binary_op(op):
+        if op == "&":
+            return "bitwise&"
+        return op
     typ = type(node)
     if typ == c_ast.ID:
         # location_rhs = variables[node.name]
@@ -599,7 +603,8 @@ def postfix_traverse(node):
             return postfix_traverse(node.expr) + [node.op]
     elif typ == c_ast.BinaryOp:
         return postfix_traverse(node.left)  + \
-               postfix_traverse(node.right) + [node.op]
+               postfix_traverse(node.right) + \
+               [disambiguate_binary_op(node.op)]
     else:
         raise Exception("Error parsing expression: unknown op type " + str(typ))
 
@@ -675,6 +680,9 @@ def postfix_max_depth(postfix):
         elif typ == "-":
             # take two off, put one on
             depth -= 1
+        elif typ == "bitwise&":
+            # take two off, put one on
+            depth -= 1
         elif typ == "self+":
             # take one off, put one on
             depth += 0
@@ -735,6 +743,9 @@ def postfix_to_asm(postfix, variables):
             a += asm("ADD R%d, R%d, R%d" % (depth, depth, depth + 1))
             # now add 1
             a += asm("ADD R%d, R%d, #1" % (depth, depth))
+        elif typ == "bitwise&":
+            depth -= 1
+            a += asm("AND R%d, R%d, R%d" % (depth, depth, depth + 1))
         elif typ in ["p++", "++", "p--", "--"]:
             depth += 1
             var_name = postfix_operand(op)
