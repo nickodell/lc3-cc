@@ -1,4 +1,5 @@
-#!/usr/bin/env python3  
+#!/usr/bin/env python3
+import re
 import sys
 import inspect
 import itertools
@@ -761,6 +762,9 @@ def postfix_to_asm(postfix, scope):
         elif typ == "bitwise&":
             depth -= 1
             a += asm("AND R%d, R%d, R%d" % (depth, depth, depth + 1))
+        elif typ == "~":
+            depth += 0
+            a += asm("NOT R%d, R%d" % (depth, depth))
         elif typ in ["p++", "++", "p--", "--"]:
             depth += 1
             var_name = postfix_operand(op)
