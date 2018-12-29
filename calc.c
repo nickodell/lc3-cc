@@ -106,10 +106,10 @@ void bignum_add1(short *op) {
     for(i = BIGNUM_LEN - 1; i >= 0; i--) {
         short temp = op[i] + 1;
         // bit 15 reserved
+        op[i] = temp & 0x7FFF;
         if(HIGH_BIT_NOT_SET(temp)) {
             break;
         }
-        op[i] = temp & 0x7FFF;
     }
     return 0;
 }
