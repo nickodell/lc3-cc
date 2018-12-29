@@ -57,17 +57,6 @@ def get_explanation(constant):
 def within_5bit_twos_complement(n):
     return -(2**4) <= n <= (2**4)-1
 
-# def pick_frame_location(variables, var_type):
-#     size = 1
-#     if type(var_type) == c_ast.ArrayDecl:
-#         size = parse_int_literal(var_type.dim.value)
-#     lowest_used_location = min(variables.values(), default=0)
-#     new_loc = lowest_used_location - size
-#     return new_loc
-
-# def get_frame_size(variables):
-#     return -min(variables.values(), default=0)
-
 ####################
 # INITIALIZATION
 
