@@ -53,7 +53,6 @@ void my_puts(char *s) {
         putchar(*s);
         s++;
     }
-    return 0;
 }
 
 
@@ -74,7 +73,6 @@ void bignum_copy(short *dest, short *src) {
         dest++;
         src++;
     }
-    return 0;
 }
 
 // void bignum_print(short *p) {
@@ -98,7 +96,6 @@ void bignum_add(short *dest, short *add1) {
         }
         dest[i] = temp;
     }
-    return 0;
 }
 
 void bignum_add1(short *op) {
@@ -111,7 +108,6 @@ void bignum_add1(short *op) {
             break;
         }
     }
-    return 0;
 }
 
 void bignum_lshift(short *shift) {
@@ -128,7 +124,6 @@ void bignum_lshift(short *shift) {
         }
         shift[i] = temp;
     }
-    return 0;
 }
 
 // bool bignum_getbit(short *bignum, int index) {
@@ -162,7 +157,6 @@ void bignum_mul10(short *op) {
     bignum_lshift(op);    // op = 4x
     bignum_lshift(op);    // op = 8x
     bignum_add(op, temp); // op = 8x + 2x
-    return 0;
 }
 
 bool bignum_ge(short *op1, short *op2) {
@@ -204,7 +198,6 @@ void bignum_sub(short *dest, short *sub) {
         }
         dest[i] = temp;
     }
-    return 0;
 }
 
 void dec_zero(char *op) {
@@ -213,7 +206,6 @@ void dec_zero(char *op) {
         *op = 0;
         op++;
     }
-    return 0;
 }
 
 void dec_add1(char *op) {
@@ -228,7 +220,6 @@ void dec_add1(char *op) {
         }
         op[i] = temp;
     }
-    return 0;
 }
 
 void dec_2c(char *op) {
@@ -240,7 +231,6 @@ void dec_2c(char *op) {
         current++;
     }
     dec_add1(op);
-    return 0;
 }
 
 void dec_division(char *out, short *num, short *denom) {
@@ -273,7 +263,6 @@ void dec_division(char *out, short *num, short *denom) {
     // if(negative) {
     //     dec_2c(out);
     // }
-    return 0;
 }
 
 void dec_add(char *dest, char *add) {
@@ -291,7 +280,6 @@ void dec_add(char *dest, char *add) {
         }
         dest[i] = temp;
     }
-    return 0;
 }
 
 void dec_print(char *p) {
@@ -319,7 +307,6 @@ void dec_print(char *p) {
     if(negative) {
         dec_2c(p);
     }
-    return 0;
 }
 
 void dec_print_integer(char *p) {
@@ -330,7 +317,6 @@ void dec_print_integer(char *p) {
         if(print) putchar(p[i] + '0');
     }
     putchar('\n');
-    return 0;
 }
 
 short bn_numerator_global[]   = {0, 0, 0, 0, 4};
@@ -386,6 +372,5 @@ int main() {
 #endif
         // max_iter -= 101;
     }
-    return 0;
 }
 
