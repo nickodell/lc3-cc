@@ -31,7 +31,6 @@
 // 2) Write ten's complement logic
 // 3) Simplify data models/API
 
-char *hex_digits = "0123456789ABCDEF";
 
 
 
