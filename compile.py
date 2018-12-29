@@ -181,18 +181,19 @@ def function_epilogue(name, frame_size):
     a += asm("RET")
     return a
 
-def emit_block(node, function_name, variables=None):
+def emit_block(node, function_name, scope):
+    # is this a single statement or a block of statements?
+    if type(node) != c_ast.Compound:
+        return emit_statement(node, function_name, scope)
+
     if node.block_items is None:
-        # an empty function requires no space
         return []
 
     a = []
-    if variables is None:
-        variables = {}
 
     for statement in node.block_items:
         try:
-            a += emit_statement(statement, function_name, variables)
+            a += emit_statement(statement, function_name, scope)
         except:
             print("Attempted to translate:")
             print(statement.coord)
