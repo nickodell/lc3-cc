@@ -361,10 +361,10 @@ def emit_cond(function_name, scope, cond, label, invert_sense=False):
         rhs_zero = has_zero_operand(cond, rhs=True)
         lhs_zero = has_zero_operand(cond, rhs=False)
 
-        # Presently, the compiler does not support a comparison like
-        # a > b. If you need to do this, rewrite it as a - b > 0.
         if not lhs_zero and not rhs_zero:
-           raise Exception("Cannot have non-zero value on both sides of compare")
+            # If we have a comparison like a < b, rewrite it as 
+            # a - b < 0
+           cond = subtract_rhs_from_both_sides(cond)
         # if statement is like 0 > a, rewrite it as a < 0
         if lhs_zero and not rhs_zero:
            cond = swap_compare_operands(cond)
@@ -435,6 +435,13 @@ def compare_type_to_branch_type(op):
 def invert_branch_type(op):
     assert type(op) == int, repr(op) + " is not int"
     return 0b111 - op
+
+def subtract_rhs_from_both_sides(cond):
+    op = cond.op
+    subtract_ast = c_ast.BinaryOp("-", cond.left, cond.right, cond.coord)
+    zero_ast = c_ast.Constant('int', '0', cond.coord)
+    compare_ast  = c_ast.BinaryOp(op, subtract_ast, zero_ast, cond.coord)
+    return compare_ast
 
 def call_function(func_call, scope):
     name = func_call.name.name
