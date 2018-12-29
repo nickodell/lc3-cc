@@ -741,11 +741,7 @@ def postfix_to_asm(postfix, scope):
         if typ == "load":
             depth += 1
             var_name = postfix_operand(op)
-            try:
-                location = scope.get_fp_rel_location(var_name)
-            except KeyError:
-                raise Exception("Unknown var %s, scoped scope are %s" % 
-                    (var_name, list(scope.keys())))
+            location = scope.get_fp_rel_location(var_name)
             a += load_register_fp_rel(depth, location)
         elif typ == "set":
             depth += 1
@@ -793,11 +789,7 @@ def postfix_to_asm(postfix, scope):
         elif typ == "&":
             depth += 1
             var_name = postfix_operand(op)
-            try:
-                location = scope.get_fp_rel_location(var_name)
-            except KeyError:
-                raise Exception("Unknown var %s, scoped scope are %s\nOp: %s" % 
-                    (var_name, scope, op))
+            location = scope.get_fp_rel_location(var_name)
             # We know the fp-relative location of the var, so
             # put that in our destination register
             a += asm("ADD R%d, R5, #%d" % (depth, location))
@@ -806,7 +798,7 @@ def postfix_to_asm(postfix, scope):
             # Take address on stack, then load the value at that address
             a += asm("LDR R%d, R%d, #0" % (depth, depth))
         else:
-            a += undefined(op)
+            raise Exception("Cannot translate %s" % op)
     return a
 
 def emit_incrementor(location, regnum, post, increment):
