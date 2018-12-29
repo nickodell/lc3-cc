@@ -480,31 +480,20 @@ def call_function(func_call, scope):
 
 def load_arguments(arguments, scope, stack=True):
     if stack:
-        args_preprocessed = [preprocess_arg(arg, scope) for arg in arguments]
-        return load_arguments_to_stack(args_preprocessed)
+        return load_arguments_to_stack(arguments, scope)
     else:
         return load_arguments_to_registers(arguments, scope)
 
-def preprocess_arg(arg, scope):
-    typ = type(arg)
-    if typ == c_ast.ID:
-        name = arg.name
-        return Argument("stack", scope.get_fp_rel_location(name), arg)
-    elif typ == c_ast.Constant:
-        return Argument("constant", arg.value, arg)
-    raise Exception("Cannot handle arg type: " + str(typ) + "\n"
-        + str(arg))
-
-def load_arguments_to_stack(args_preprocessed):
+def load_arguments_to_stack(args, scope):
     a = []
-    for argument in reversed(args_preprocessed):
-        source, contents, original_arg = argument
-        if source == "stack":
-            location = contents
+    for arg in reversed(args):
+        if type(arg) == c_ast.ID:
+            name = arg.name
+            location = scope.get_fp_rel_location(name)
             a += load_register_fp_rel(0, location)
-        elif source == "constant":
-            imm = parse_int_literal(contents)
-            a += set_register(0, imm, get_explanation(original_arg))
+        elif type(arg) == c_ast.Constant:
+            immediate = parse_int_literal(arg.value)
+            a += set_register(0, immediate, get_explanation(arg))
         else:
             raise Exception()
         a += asm("PUSH R0")
