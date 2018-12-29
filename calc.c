@@ -3,19 +3,22 @@
 #include <stdlib.h>
 #include <stdbool.h>
 #endif
+#ifdef LC3
+#define true 1
+#define false 0
+#endif
 
 #define FIX_LEN 10
-#define FIX_LEN_TOTAL (FIX_LEN + 1)
+#define FIX_LEN_TOTAL 11  // (FIX_LEN + 1)
 #define BIGNUM_LEN 5
 #define BIGNUM_BITS_PER_ADDR 15
 #define int short
 
 
+
 #ifdef LC3
 #define ITERATIONS_PER_PRINT 101
 #define bool short
-#define true 1
-#define false 0
 #else
 #define ITERATIONS_PER_PRINT 10001
 #endif
