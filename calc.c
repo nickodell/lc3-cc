@@ -341,7 +341,7 @@ int main() {
     char result[FIX_LEN_TOTAL];
     char term  [FIX_LEN_TOTAL];
     char i_dec [FIX_LEN_TOTAL];
-    bool negate = false;
+    int negate = false;
     int j;
 #ifdef LC3
     // short *corrupt = 0;
@@ -362,7 +362,7 @@ int main() {
             // printf("term before neg: "); dec_print(term);
             if(negate) dec_2c(term);
             // printf("term in loop: "); dec_print(term);
-            negate = !negate;
+            negate = ~negate;
             dec_add(result, term);
             // bignum_add(bn_denominator, bn_inc);
             // add 2
