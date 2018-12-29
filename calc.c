@@ -332,15 +332,21 @@ void dec_print_integer(char *p) {
     putchar('\n');
     return 0;
 }
+
+short bn_numerator_global[]   = {0, 0, 0, 0, 4};
+short bn_denominator_global[] = {0, 0, 0, 0, 1};
+char result_global[FIX_LEN_TOTAL];
+char term_global  [FIX_LEN_TOTAL];
+char i_dec_global [FIX_LEN_TOTAL];
+
 #undef int
 int main() {
 #define int short
-    short bn_numerator[]   = {0, 0, 0, 0, 4};
-    short bn_denominator[] = {0, 0, 0, 0, 1};
-    // short bn_inc[]         = {0, 0, 0, 0, 2};
-    char result[FIX_LEN_TOTAL];
-    char term  [FIX_LEN_TOTAL];
-    char i_dec [FIX_LEN_TOTAL];
+    short *bn_numerator = bn_numerator_global;
+    short *bn_denominator = bn_denominator_global;
+    char *result = result_global;
+    char *term = term_global;
+    char *i_dec = i_dec_global;
     int negate = false;
     int j;
 #ifdef LC3
