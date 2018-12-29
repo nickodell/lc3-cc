@@ -207,11 +207,17 @@ def emit_statement(statement, function_name, scope):
         a += call_function(statement, scope)
     elif typ == c_ast.Decl:
         # stack grows downward
-        scope.define_variable(statement.name, statement.type)
+        scope.define_variable(statement.name, statement.type, statement.init)
         location = scope.get_fp_rel_location(statement.name)
         if statement.init is not None:
-            a += emit_rvalue_expression(statement.init, scope)
-            a += store_register_fp_rel(0, location)
+            if type(statement.init) != c_ast.InitList:
+                a += emit_rvalue_expression(statement.init, scope)
+                a += store_register_fp_rel(0, location)
+            else:
+                # initialize each element of the array
+                for i, expr in enumerate(statement.init.exprs):
+                    a += emit_rvalue_expression(expr, scope)
+                    a += store_register_fp_rel(0, location + i)
     elif typ == c_ast.DeclList:
         # process each Decl
         for decl in statement.decls:
@@ -920,7 +926,7 @@ def emit_all(ast):
             first_arg_offset = 3
             for i, arg in enumerate(args):
                 location = first_arg_offset + i
-                scope.define_variable(arg.name, arg.type.type, location)
+                scope.define_variable(arg.name, arg.type.type, None, location)
             # generate code for body to find out
             # how much stack space we need
             body = emit_block(node.body, name, scope)

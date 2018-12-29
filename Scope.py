@@ -16,20 +16,26 @@ class Scope(object):
             self.variables = {}
         self.frame_size = 0
 
-    def define_variable(self, name, var_type, location=None):
+    def define_variable(self, name, var_type, initializer, location=None):
         if name in self.variables:
             raise Exception("Duplicate variable name %s" % name)
         if location is None:
-            location = self._pick_frame_location(var_type)
+            location = self._pick_frame_location(var_type, initializer)
         self.variables[name] = location
         self._update_frame_size()
 
-    def _pick_frame_location(self, var_type):
+    def _pick_frame_location(self, var_type, initializer):
         # Unless the new variable is an array, assume that
         # it has size 1.
         sizeof = 1
         if type(var_type) == c_ast.ArrayDecl:
-            sizeof = parse_int_literal(var_type.dim.value)
+            if var_type.dim is not None:
+                assert type(var_type.dim) == c_ast.Constant
+                sizeof = parse_int_literal(var_type.dim.value)
+            elif initializer is not None:
+                sizeof = len(initializer.exprs)
+            else:
+                raise Exception("Error, array declared without size or initializer")
         lowest_used_location = min(self.variables.values(), default=0)
         new_loc = lowest_used_location - sizeof
         return new_loc
