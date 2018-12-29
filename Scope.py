@@ -12,8 +12,10 @@ class Scope(object):
             assert break_prefix is not None
         if self.prev_scope is not None:
             self.variables = dict(self.prev_scope.variables)
+            self.types = dict(self.prev_scope.types)
         else:
             self.variables = {}
+            self.types = {}
         self.frame_size = 0
 
     def define_variable(self, name, var_type, initializer, location=None):
@@ -22,6 +24,7 @@ class Scope(object):
         if location is None:
             location = self._pick_frame_location(var_type, initializer)
         self.variables[name] = location
+        self.types[name] = var_type
         self._update_frame_size()
 
     def _pick_frame_location(self, var_type, initializer):
