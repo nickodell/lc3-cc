@@ -380,7 +380,6 @@ int main() {
 #endif
         // max_iter -= 101;
     }
-    puts("end of main()");
     return 0;
 }
 
