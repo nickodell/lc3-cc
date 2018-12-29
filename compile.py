@@ -225,14 +225,21 @@ def emit_statement(statement, function_name, scope):
             # store to left side
             lhs = statement.lvalue
             a += store_to_lvalue(lhs, scope)
-        elif statement.op == "&=":
+        elif statement.op in ["&=", "|=", "+=", "-="]:
             # rewrite this:
             #    a &= b;
             # as:
-            #    a = a & b;
+            #    a = a & b
+            assignment_to_op = {
+                '&=': '&',
+                '|=': '|',
+                '+=': '+',
+                '-=': '-',
+            }
             old_rhs = statement.rvalue
             lhs = statement.lvalue
-            new_rhs = c_ast.BinaryOp("&", lhs, old_rhs, statement.coord)
+            new_op = assignment_to_op[statement.op]
+            new_rhs = c_ast.BinaryOp(new_op, lhs, old_rhs, statement.coord)
             new_statement = c_ast.Assignment("=", lhs, new_rhs, statement.coord)
             return emit_statement(new_statement, function_name, scope)
         else:
