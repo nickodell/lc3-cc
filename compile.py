@@ -699,6 +699,12 @@ def postfix_max_depth(postfix):
         elif typ == "bitwise&":
             # take two off, put one on
             depth -= 1
+        elif typ == "|":
+            # take two off, put one on
+            depth -= 1
+        elif typ == "~":
+            # take one off, put one on
+            depth += 0
         elif typ == "self+":
             # take one off, put one on
             depth += 0
