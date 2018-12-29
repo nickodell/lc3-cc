@@ -490,10 +490,18 @@ def load_arguments_to_stack(args, scope):
         if type(arg) == c_ast.ID:
             name = arg.name
             location = scope.get_fp_rel_location(name)
-            a += load_register_fp_rel(0, location)
+            if not scope.is_array(name):
+                a += load_register_fp_rel(0, location)
+            else:
+                a += asm("ADD R0, R5, #%d" % location)
         elif type(arg) == c_ast.Constant:
-            immediate = parse_int_literal(arg.value)
-            a += set_register(0, immediate, get_explanation(arg))
+            if arg.type == "int":
+                immediate = parse_int_literal(arg.value)
+                a += set_register(0, immediate, get_explanation(arg))
+            elif arg.type == "string":
+                address = load_address_of_string(0, arg.value)
+            else:
+                raise Exception()
         else:
             raise Exception()
         a += asm("PUSH R0")
@@ -864,6 +872,8 @@ def set_register(regnum, value, explain=None):
         # Then add the value to zero
         a += asm("ADD R%d, R%d, #%d" % (regnum, regnum, value))
         return a
+    if value < 0:
+        value += 2 ** 16
     label = reserve_label("imm%x" % value)
     a += asm("LD R%d, %s" % (regnum, label))
     explain_str = " ; %s" % explain if explain is not None else ""
@@ -871,6 +881,14 @@ def set_register(regnum, value, explain=None):
     # print("set_register", a)
     return a
     # return [undefined("cannot set R%d to %s" % (regnum, value))]
+
+def load_address_of_string(regnum, string):
+    a = []
+    # replace non alphanumeric chars with nothing
+    clean_string = re.sub('[^0-9a-zA-Z]+', '', string)
+    label = reserve_label("str_%s" % clean_string)
+    a += asm("$DEFER %s .STRINGZ %s" % (label, string))
+    return a
 
 def store_register_fp_rel(regnum, fp_offset):
     return asm("STR R%d, R5, #%d" % (regnum, fp_offset))

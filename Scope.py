@@ -43,6 +43,10 @@ class Scope(object):
         new_loc = lowest_used_location - sizeof
         return new_loc
 
+    def is_array(self, name):
+        var_type = self.types[name]
+        return type(var_type) == c_ast.ArrayDecl
+
     def get_fp_rel_location(self, name):
         if name not in self.variables:
             raise Exception("Unknown var %s, scoped variables are %s" % \
