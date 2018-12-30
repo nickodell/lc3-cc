@@ -5,7 +5,7 @@ import inspect
 import itertools
 from pycparser import parse_file, c_ast, c_parser, c_generator
 from collections import namedtuple
-from Scope import *
+import Scope
 Argument = namedtuple('Argument', 'source contents original_arg ')
 
 function_prototypes = {}
@@ -101,6 +101,20 @@ def has_ret_value_slot(name, location=None):
     if func_prototype.type.type.names[0] == 'void':
         ret_value_slot = False
     return ret_value_slot
+
+###################
+# GLOBALS
+
+def get_globals(ast):
+    global_scope = Scope.Scope(None, "global", False)
+    # global_scope.
+    # print(ast)
+    for node in ast.ext:
+        if type(node) == c_ast.Decl:
+            pass
+            # global_scope.define_variable()
+    Scope.global_scope = global_scope
+
 
 ###################
 # BUILTINS
@@ -294,7 +308,7 @@ def emit_loop(function_name, old_scope, init, cond, body, next_, \
     # Copy old variables into new scope. If we define new variables in
     # this block, they die when the if ends
     label_prefix = "%s_%s" % (function_name, loop_type)
-    scope = Scope(old_scope, loop_type, True, "%s_break" % label_prefix)
+    scope = Scope.Scope(old_scope, loop_type, True, "%s_break" % label_prefix)
     if init is not None:
         # start by initializing the loop variable
         a += emit_statement(init, function_name, scope)
@@ -321,8 +335,8 @@ def emit_if(statement, function_name, old_scope):
     a = []
     # Copy old variables into new scope. If we define new variables in
     # this block, they die when the if ends
-    if_scope =   Scope(old_scope, "if",   False)
-    else_scope = Scope(old_scope, "else", False)
+    if_scope =   Scope.Scope(old_scope, "if",   False)
+    else_scope = Scope.Scope(old_scope, "else", False)
 
     # check how much stack space the if block takes
     # then how much stack space the else takes
@@ -909,6 +923,7 @@ def emit_all(ast):
     program = []
     program += program_begin()
     get_all_prototypes(ast)
+    get_globals(ast)
     functions = []
     for node in ast.ext:
         typ = type(node)
@@ -919,7 +934,7 @@ def emit_all(ast):
             args = []
             if node.decl.type.args is not None:
                 args = [arg for arg in node.decl.type.args.params]
-            scope = Scope(None, "function", False)
+            scope = Scope.Scope(None, "function", False)
             first_arg_offset = 3
             for i, arg in enumerate(args):
                 location = first_arg_offset + i

@@ -1,6 +1,8 @@
 from pycparser import c_ast
 from compile import reserve_label, parse_int_literal
 
+global_scope = None # set by compile.py, holds all globals
+
 class Scope(object):
     def __init__(self, prev_scope, kind, is_loop, break_prefix=None):
         self.prev_scope = prev_scope
@@ -11,8 +13,8 @@ class Scope(object):
         if is_loop:
             assert break_prefix is not None
         if self.prev_scope is not None:
-            self.variables = dict(self.prev_scope.variables)
-            self.types = dict(self.prev_scope.types)
+            self.variables = {}
+            self.types = {}
         else:
             self.variables = {}
             self.types = {}
@@ -25,6 +27,7 @@ class Scope(object):
             location = self._pick_frame_location(var_type, initializer)
         self.variables[name] = location
         self.types[name] = var_type
+        # print("var %s placed at %s" % (name, location))
         self._update_frame_size()
 
     def _pick_frame_location(self, var_type, initializer):
@@ -39,19 +42,42 @@ class Scope(object):
                 sizeof = len(initializer.exprs)
             else:
                 raise Exception("Error, array declared without size or initializer")
-        lowest_used_location = min(self.variables.values(), default=0)
+        lowest_used_location = self._get_lowest_used_location()
         new_loc = lowest_used_location - sizeof
         return new_loc
 
+    def _get_lowest_used_location(self):
+        if len(self.variables) != 0:
+            return min(self.variables.values())
+        if self.prev_scope is not None:
+            return self.prev_scope._get_lowest_used_location()
+        # No variables, and we are outermost scope, so 0 is fine
+        return 0
+
     def is_array(self, name):
-        var_type = self.types[name]
+        var_type = self._get_type(name)
         return type(var_type) == c_ast.ArrayDecl
 
+    def _get_type(self, name):
+        if name in self.types:
+            return self.types[name]
+        if self.prev_scope is not None:
+            return self.prev_scope._get_type(name)
+        raise Exception("Unknown var %s" % name)
+
     def get_fp_rel_location(self, name):
-        if name not in self.variables:
-            raise Exception("Unknown var %s, scoped variables are %s" % \
-                (name, self.variables))
-        return self.variables[name]
+        ret = self._get_fp_rel_location_recursive(name)
+        if ret is not None:
+            return ret
+        raise Exception("Unknown var %s, scoped variables are %s" % \
+            (name, self.variables))
+
+    def _get_fp_rel_location_recursive(self, name):
+        if name in self.variables:
+            return self.variables[name]
+        if self.prev_scope is not None:
+            return self.prev_scope._get_fp_rel_location_recursive(name)
+        return None
 
     def _propagate_frame_size(self, new_frame_size):
         # if the new frame size is not bigger, don't bother
