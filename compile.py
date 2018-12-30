@@ -179,13 +179,15 @@ def emit_block(node, function_name, scope):
     if node.block_items is None:
         return []
 
+    a = []
     for statement in node.block_items:
         try:
-            return emit_statement(statement, function_name, scope)
+            a += emit_statement(statement, function_name, scope)
         except:
             print("Attempted to translate:")
             print(statement.coord)
             raise
+    return a
 
 def emit_statement(statement, function_name, scope):
     a = []
