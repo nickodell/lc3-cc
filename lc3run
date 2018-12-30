@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+# Takes assembly on stdin, assembles it, and runs it
+debug=false
+set -euo pipefail
+# if debug set, print commands before executing them
+if [ $debug = 'true' ]; then set -x; fi
+temp_dir="$(mktemp -d)"
+if [ $debug = 'true' ]; then echo temp_dir: $temp_dir; fi
+asm_path="$temp_dir/a.asm"
+obj_path="$temp_dir/a.obj"
+script_path="$temp_dir/a.script"
+
+# Pipe input from STDIN to asm file
+cat > $temp_dir/a.asm
+if [ $debug = 'true' ]; then cat $asm_path; fi
+
+# Assemble input
+# `chronic` ignores output unless there is an error, in which
+# case it outputs normally.
+# Requires debian package 'moreutils'
+chronic lc3as $asm_path || exit
+if [ $debug = 'true' ]; then ls $temp_dir; fi
+
+# Create script file
+echo "file $obj_path
+continue" > $script_path
+
+# Run it.
+# Remove line that says "Loaded such-and-such"
+lc3sim -norun -s $script_path | sed '1 d'
+
+# If not in debug mode, clean up after ourselves.
+if [ $debug != 'true' ]; then rm -r $temp_dir; fi
