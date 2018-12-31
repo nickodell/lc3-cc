@@ -929,8 +929,7 @@ def load_register_from_variable(regnum, name, scope):
     except Scope.AbsoluteAddressingException:
         # this is a global
         a = []
-        a += get_global_data_pointer()
-        a += asm("POP R%d" % regnum)
+        a += get_global_data_pointer(regnum)
         location = Scope.global_scope.get_global_rel_location(name)
         # assert within_6bit_twos_complement(location), "%s out of range" % location
         if not scope.is_array(name):
@@ -961,8 +960,7 @@ def load_register_from_address(regnum, name, scope):
     except Scope.AbsoluteAddressingException:
         # this is a global
         a = []
-        a += get_global_data_pointer()
-        a += asm("POP R%d" % regnum)
+        a += get_global_data_pointer(tempreg)
         # a += asm("ADD R%d, R%d, #%d" % (tempreg, tempreg, location))
         location = Scope.global_scope.get_global_rel_location(name)
         assert within_5bit_twos_complement(location)
@@ -979,18 +977,20 @@ def store_register_to_variable(regnum, tempreg, name, scope):
     except Scope.AbsoluteAddressingException:
         # this is a global
         a = []
-        a += get_global_data_pointer()
-        a += asm("POP R%d" % tempreg)
+        a += get_global_data_pointer(tempreg)
         # a += asm("ADD R%d, R%d, #%d" % (tempreg, tempreg, location))
         location = Scope.global_scope.get_global_rel_location(name)
         assert within_6bit_twos_complement(location)
         a += asm("STR R%d, R%d, #%d%s" % (regnum, tempreg, location, comment))
         return a
 
-def get_global_data_pointer():
+def get_global_data_pointer(register):
     # Puts pointer to start of global data onto top of stack
     # Use `POP <register>` to get it out
-    return asm("TRAP x30")
+    a = []
+    a += asm("TRAP x30")
+    a += asm("POP R%d" % register)
+    return a
 
 
 ####################
