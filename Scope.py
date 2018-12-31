@@ -34,7 +34,11 @@ class Scope(object):
 
     def _get_lowest_used_location(self):
         if len(self.variables) != 0:
-            return min(self.variables.values())
+            lowest = min(self.variables.values())
+            # If the highest used address is a parameter, don't
+            # pick the next location. Skip over the return address/
+            # frame pointer.
+            return min(lowest, 0)
         if self.prev_scope is not None:
             return self.prev_scope._get_lowest_used_location()
         # No variables, and we are outermost scope, so 0 is fine
