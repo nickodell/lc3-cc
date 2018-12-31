@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+# set -x
+set -u
+
+if [ $# -ne 1 ]; then
+    echo "Usage: $0 <test name>"
+    exit 1
+fi
+
+test_name=$1
+normal_asm=tests/expect_asm/$test_name
+master_asm=$normal_asm.correct
+normal_out=tests/expect_out/$test_name
+master_out=$normal_out.correct
+did_something=0
+
+if [ ! -f $normal_asm ]; then
+    echo $0: file $normal_asm not found
+    exit 1
+fi
+
+if [ ! -f $normal_out ]; then
+    echo $0: file $normal_out not found
+    exit 1
+fi
+
+if ! diff $normal_asm $master_asm; then
+    did_something=1
+    cp -v $normal_asm $master_asm
+fi
+
+if ! diff $normal_out $master_out; then
+    did_something=1
+    cp -v $normal_out $master_out
+fi
+
+if [ $did_something -eq 0 ]; then
+    echo Nothing to do for \'$test_name\'.
+fi
