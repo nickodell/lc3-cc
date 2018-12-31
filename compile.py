@@ -57,21 +57,51 @@ def get_explanation(constant):
 def within_5bit_twos_complement(n):
     return -(2**4) <= n <= (2**4)-1
 
+def within_6bit_twos_complement(n):
+    return -(2**5) <= n <= (2**5)-1
+
 ####################
 # INITIALIZATION
 
-def program_begin():
+def program_begin(uses_globals=False):
     a = []
     a += asm(".ORIG x3000")
+    if uses_globals:
+        # Load address of trap routine
+        a += asm("LEA R0, TRAP_GD")
+        # Go to address at GD_trap_vector, go to THAT address, and
+        # patch the trap vector with the address of the trap routine.
+        a += asm("STI R0, TRAP_GD_VECTOR_ADDR")
     a += asm("LD R5, BOTTOM_OF_STACK")
     a += asm("LD R6, BOTTOM_OF_STACK")
+    # If our program has global variables, we need some glue code so that
+    # we can address them efficiently. Do that by creating a trap subroutine
+    # which gives a pointer to the start of global data.
     a += asm("JSR main")
     a += asm("HALT")
     a += asm("BOTTOM_OF_STACK .FILL xF000")
+    if uses_globals:
+        # Trap definition
+        a += asm("TRAP_GD")
+        a += asm("ST R0, TMP_R0")
+        # Load R4 with a pointer to start of global data
+        a += asm("LD R0, GLOBAL_DATA_START_PTR")
+        a += asm("PUSH R0")
+        a += asm("LD R0, TMP_R0")
+        a += asm("RET")
+        a += asm("TMP_R0 .FILL 0")
+        a += asm("GLOBAL_DATA_START_PTR .FILL GLOBAL_DATA_START")
+        # Address of trap vector that we must patch
+        a += asm("TRAP_GD_VECTOR_ADDR .FILL 0x30")
     return a
 
-def program_end():
-    return asm(".END")
+def program_end(uses_globals=False):
+    a = []
+    if uses_globals:
+        a += asm("global_data_start")
+    a += asm(".END")
+    return a
+
 
 ###################
 # PROTOTYPES
@@ -106,14 +136,16 @@ def has_ret_value_slot(name, location=None):
 # GLOBALS
 
 def get_globals(ast):
-    global_scope = Scope.Scope(None, "global", False)
+    global_scope = Scope.GlobalScope()
     # global_scope.
     # print(ast)
     for node in ast.ext:
         if type(node) == c_ast.Decl:
-            pass
-            # global_scope.define_variable()
+            global_scope.define_variable(node.name, node.type, node.init)
+    global_scope.pick_locations()
     Scope.global_scope = global_scope
+    # represents whether the program uses any global variables
+    return True
 
 
 ###################
@@ -491,12 +523,7 @@ def load_arguments_to_stack(args, scope):
     a = []
     for arg in reversed(args):
         if type(arg) == c_ast.ID:
-            name = arg.name
-            location = scope.get_fp_rel_location(name)
-            if not scope.is_array(name):
-                a += load_register_fp_rel(0, location)
-            else:
-                a += asm("ADD R0, R5, #%d" % location)
+            a += load_register_from_variable(0, arg.name, scope)
         elif type(arg) == c_ast.Constant:
             if arg.type == "int":
                 immediate = parse_int_literal(arg.value)
@@ -537,14 +564,11 @@ def store_to_lvalue(lhs, scope):
     lhs_typ = type(lhs)
     if lhs_typ == c_ast.ID:
         # variable
-        location_lhs = scope.get_fp_rel_location(lhs.name)
-        a += store_register_fp_rel(0, location_lhs)
+        a += store_register_to_variable(0, 1, lhs.name, scope)
     elif lhs_typ == c_ast.UnaryOp and lhs.op == "*" and type(lhs.expr) == c_ast.ID:
         # pointer
-        name = lhs.expr.name
-        location = scope.get_fp_rel_location(name)
         # Load to R1, as R0 is in use
-        a += load_register_fp_rel(1, location)
+        a += load_register_from_variable(1, lhs.expr.name, scope)
         # Store R0 in location pointed to by R1
         a += asm("STR R0, R1, #0")
     elif lhs_typ == c_ast.ArrayRef and type(lhs.name) == c_ast.ID and \
@@ -552,23 +576,19 @@ def store_to_lvalue(lhs, scope):
         # array access with variable subscript
         name_array = lhs.name.name
         name_subscript = lhs.subscript.name
-        location_array = scope.get_fp_rel_location(name_array)
-        location_subscript = scope.get_fp_rel_location(name_subscript)
         # Load to R1 and R2, as R0 is in use
-        a += load_register_fp_rel(1, location_array)
-        a += load_register_fp_rel(2, location_subscript)
+        a += load_register_from_variable(1, name_array, scope)
+        a += load_register_from_variable(2, name_subscript, scope)
         a += asm("ADD R1, R1, R2")
         a += asm("STR R0, R1, #0")
     elif lhs_typ == c_ast.ArrayRef and type(lhs.name) == c_ast.ID and \
             type(lhs.subscript) == c_ast.Constant:
         # array access with fixed subscript
         # significantly simpler
-        name_array = lhs.name.name
         subscript = parse_int_literal(lhs.subscript.value)
-        location_array = scope.get_fp_rel_location(name_array)
-        # Load to R1 and R2, as R0 is in use
-        a += load_register_fp_rel(1, location_array)
-        assert within_5bit_twos_complement(subscript)
+        # Load to R1, as R0 is in use
+        a += load_register_from_variable(1, lhs.name.name, scope)
+        assert within_6bit_twos_complement(subscript)
         a += asm("STR R0, R1, #%d" % subscript)
     else:
         a += undefined("store_to_lvalue:\n\t" + str(lhs))
@@ -601,8 +621,6 @@ def postfix_traverse(node):
         return op
     typ = type(node)
     if typ == c_ast.ID:
-        # location_rhs = scope.get_fp_rel_location(node.name)
-        # a += load_register_fp_rel(0, location_rhs)
         return [("load", node.name)]
     elif typ == c_ast.Constant:
         return [("set", parse_int_literal(node.value))]
@@ -744,8 +762,7 @@ def postfix_to_asm(postfix, scope):
         if typ == "load":
             depth += 1
             var_name = postfix_operand(op)
-            location = scope.get_fp_rel_location(var_name)
-            a += load_register_fp_rel(depth, location)
+            a += load_register_from_variable(depth, var_name, scope)
         elif typ == "set":
             depth += 1
             a += set_register(depth, postfix_operand(op))
@@ -770,19 +787,14 @@ def postfix_to_asm(postfix, scope):
         elif typ in ["p++", "++", "p--", "--"]:
             depth += 1
             var_name = postfix_operand(op)
-            try:
-                location = scope.get_fp_rel_location(var_name)
-            except KeyError:
-                raise Exception("Unknown var %s, scoped scope are %s\nOp: %s" % 
-                    (var_name, scope, op))
             if typ == "p++":
-                a += emit_incrementor(location, depth, True, True)
+                a += emit_incrementor(var_name, depth, scope, True, True)
             elif typ == "++":
-                a += emit_incrementor(location, depth, False, True)
+                a += emit_incrementor(var_name, depth, scope, False, True)
             elif typ == "p--":
-                a += emit_incrementor(location, depth, True, False)
+                a += emit_incrementor(var_name, depth, scope, True, False)
             elif typ == "--":
-                a += emit_incrementor(location, depth, False, False)
+                a += emit_incrementor(var_name, depth, scope, False, False)
             else:
                 raise Exception()
         elif typ == "self+":
@@ -795,10 +807,8 @@ def postfix_to_asm(postfix, scope):
         elif typ == "&":
             depth += 1
             var_name = postfix_operand(op)
-            location = scope.get_fp_rel_location(var_name)
-            # We know the fp-relative location of the var, so
-            # put that in our destination register
-            a += asm("ADD R%d, R5, #%d" % (depth, location))
+            # Put address in register 'depth'
+            a += load_register_from_address(depth, var_name, scope)
         elif typ == "*":
             depth += 0
             # Take address on stack, then load the value at that address
@@ -807,10 +817,12 @@ def postfix_to_asm(postfix, scope):
             raise Exception("Cannot translate %s" % op)
     return a
 
-def emit_incrementor(location, regnum, post, increment):
+def emit_incrementor(name, regnum, scope, post, increment):
     a = []
+    tempreg = regnum + 1
+    assert tempreg < 5
     # load variable from stack
-    a += load_register_fp_rel(regnum, location)
+    a += load_register_from_variable(regnum, name, scope)
     if increment:
         # add 1
         a += asm("ADD R%d, R%d, #1" % (regnum, regnum))
@@ -818,7 +830,7 @@ def emit_incrementor(location, regnum, post, increment):
         # sub 1
         a += asm("ADD R%d, R%d, #-1" % (regnum, regnum))
     # store it back to the stack
-    a += store_register_fp_rel(regnum, location)
+    a += store_register_to_variable(regnum, tempreg, name, scope)
     if post:
         # Undo what we just did, because we were asked for 
         # the value of the variable before the addition.
@@ -889,10 +901,80 @@ def load_address_of_string(regnum, string):
     return a
 
 def store_register_fp_rel(regnum, fp_offset):
+    assert within_6bit_twos_complement(fp_offset)
     return asm("STR R%d, R5, #%d" % (regnum, fp_offset))
 
 def load_register_fp_rel(regnum, fp_offset):
+    assert within_6bit_twos_complement(fp_offset)
     return asm("LDR R%d, R5, #%d" % (regnum, fp_offset))
+
+def load_register_from_variable(regnum, name, scope):
+    a = []
+    try:
+        location = scope.get_fp_rel_location(name)
+        if not scope.is_array(name):
+            a += load_register_fp_rel(regnum, location)
+        else:
+            # implicitly convert from array to pointer to first element
+            a += asm("ADD R%d, R5, #%d" % (regnum, location))
+        return a
+    except Scope.AbsoluteAddressingException:
+        # this is a global
+        a = []
+        a += get_global_data_pointer()
+        a += asm("POP R%d" % regnum)
+        location = Scope.global_scope.get_global_rel_location(name)
+        # assert within_6bit_twos_complement(location), "%s out of range" % location
+        while not within_6bit_twos_complement(location):
+            a += asm("ADD R%d, R%d, #15" % (regnum, regnum))
+            location -= 15
+            assert location > 0
+        a += asm("LDR R%d, R%d, #%d" % (regnum, regnum, location))
+        return a
+
+def load_register_from_address(regnum, name, scope):
+    # Load a register with an address, but don't actually load it
+    a = []
+    try:
+        location = scope.get_fp_rel_location(name)
+        if not scope.is_array(name):
+            a += asm("ADD R0, R5, #%d" % location)
+        else:
+            raise Exception("Cannot ask for address of array")
+        return a
+    except Scope.AbsoluteAddressingException:
+        # this is a global
+        a = []
+        a += get_global_data_pointer()
+        a += asm("POP R%d" % regnum)
+        # a += asm("ADD R%d, R%d, #%d" % (tempreg, tempreg, location))
+        location = Scope.global_scope.get_global_rel_location(name)
+        assert within_5bit_twos_complement(location)
+        a += asm("ADD R%d, R%d, #%d" % (regnum, regnum, location))
+        return a
+
+def store_register_to_variable(regnum, tempreg, name, scope):
+    # TODO: use tempreg when location is too far to address
+    assert regnum != tempreg
+    try:
+        location = scope.get_fp_rel_location(name)
+        return store_register_fp_rel(regnum, location)
+    except Scope.AbsoluteAddressingException:
+        # this is a global
+        a = []
+        a += get_global_data_pointer()
+        a += asm("POP R%d" % tempreg)
+        # a += asm("ADD R%d, R%d, #%d" % (tempreg, tempreg, location))
+        location = Scope.global_scope.get_global_rel_location(name)
+        assert within_6bit_twos_complement(location)
+        a += asm("STR R%d, R%d, #%d" % (regnum, tempreg, location))
+        return a
+
+def get_global_data_pointer():
+    # Puts pointer to start of global data onto top of stack
+    # Use `POP <register>` to get it out
+    return asm("TRAP x30")
+
 
 ####################
 # PARSE
@@ -921,9 +1003,9 @@ def parse_int_literal(literal):
 
 def emit_all(ast):
     program = []
-    program += program_begin()
+    uses_globals = get_globals(ast)
+    program += program_begin(uses_globals)
     get_all_prototypes(ast)
-    get_globals(ast)
     functions = []
     for node in ast.ext:
         typ = type(node)
@@ -955,7 +1037,7 @@ def emit_all(ast):
             functions.append(func)
     for func in functions:
         program += func
-    program += program_end()
+    program += program_end(uses_globals)
     sys.stdout.write("".join(program))
 
 def main(filename):

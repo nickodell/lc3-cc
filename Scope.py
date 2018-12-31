@@ -1,3 +1,4 @@
+import itertools
 from pycparser import c_ast
 from compile import reserve_label, parse_int_literal
 
@@ -5,19 +6,15 @@ global_scope = None # set by compile.py, holds all globals
 
 class Scope(object):
     def __init__(self, prev_scope, kind, is_loop, break_prefix=None):
+        if is_loop:
+            assert break_prefix is not None
         self.prev_scope = prev_scope
         self.kind = kind
         self.is_loop = is_loop
         self.break_prefix = break_prefix
         self.break_prefix_used = False
-        if is_loop:
-            assert break_prefix is not None
-        if self.prev_scope is not None:
-            self.variables = {}
-            self.types = {}
-        else:
-            self.variables = {}
-            self.types = {}
+        self.variables = {}
+        self.types = {}
         self.frame_size = 0
 
     def define_variable(self, name, var_type, initializer, location=None):
@@ -31,19 +28,8 @@ class Scope(object):
         self._update_frame_size()
 
     def _pick_frame_location(self, var_type, initializer):
-        # Unless the new variable is an array, assume that
-        # it has size 1.
-        sizeof = 1
-        if type(var_type) == c_ast.ArrayDecl:
-            if var_type.dim is not None:
-                assert type(var_type.dim) == c_ast.Constant
-                sizeof = parse_int_literal(var_type.dim.value)
-            elif initializer is not None:
-                sizeof = len(initializer.exprs)
-            else:
-                raise Exception("Error, array declared without size or initializer")
         lowest_used_location = self._get_lowest_used_location()
-        new_loc = lowest_used_location - sizeof
+        new_loc = lowest_used_location - sizeof(var_type, initializer)
         return new_loc
 
     def _get_lowest_used_location(self):
@@ -77,6 +63,8 @@ class Scope(object):
             return self.variables[name]
         if self.prev_scope is not None:
             return self.prev_scope._get_fp_rel_location_recursive(name)
+        if global_scope.defined(name):
+            raise AbsoluteAddressingException()
         return None
 
     def _propagate_frame_size(self, new_frame_size):
@@ -112,3 +100,61 @@ class Scope(object):
             prev_scope_list.append(current_scope.kind)
             current_scope = current_scope.prev_scope
         return "Scope(prev=%s, kind=%s)" % (prev_scope_list, self.kind)
+
+class GlobalScope(object):
+    def __init__(self):
+        self.variables = {}
+        self.types = {}
+        self.initializers = {}
+        self.locations = {}
+
+    def defined(self, name):
+        return name in self.variables
+
+    def define_variable(self, name, var_type, initializer):
+        if name in self.variables:
+            raise Exception("Duplicate variable name %s" % name)
+        self.variables[name] = None
+        self.types[name] = var_type
+        self.initializers[name] = initializer
+
+    def pick_locations(self):
+        bss_vars = []
+        data_vars = []
+        for name in self.variables:
+            # Make sure it doesn't already have a location
+            assert self.variables[name] is None
+            initializer = self.initializers[name]
+            if initializer is None:
+                bss_vars.append(name)
+            else:
+                data_vars.append(name)
+
+        first_unused_position = 0
+        # Put data variables first, as they need to be initialized
+        # Not initializing BSS saves us space
+        for name in itertools.chain(data_vars, bss_vars):
+            self.variables[name] = first_unused_position
+            var_type = self.types[name]
+            initializer = self.initializers[name]
+            first_unused_position += sizeof(var_type, initializer)
+
+    def get_global_rel_location(self, name):
+        return self.variables[name]
+
+def sizeof(var_type, initializer):
+    # Unless the new variable is an array, assume that
+    # it has size 1.
+    size = 1
+    if type(var_type) == c_ast.ArrayDecl:
+        if var_type.dim is not None:
+            assert type(var_type.dim) == c_ast.Constant
+            size = parse_int_literal(var_type.dim.value)
+        elif initializer is not None:
+            size = len(initializer.exprs)
+        else:
+            raise Exception("Error, array declared without size or initializer")
+    return size
+
+class AbsoluteAddressingException(Exception):
+    pass
