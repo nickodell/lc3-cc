@@ -696,6 +696,12 @@ def postfix_optimize(postfix, value_used):
                 op_type(c) == "+":
             peephole = [a, ("imm+", operand(b))]
             replace_at(peephole)
+    # look for imm+ with a constant
+    for peephole in group_iterate(2):
+        a, b = peephole
+        if op_type(a) == "set" and op_type(b) == "imm+":
+            peephole = [("set", operand(a) + operand(b))]
+            replace_at(peephole)
     # print(postfix)
     return postfix
 
