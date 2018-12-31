@@ -1,0 +1,55 @@
+.ORIG x3000
+LD R5, BOTTOM_OF_STACK
+LD R6, BOTTOM_OF_STACK
+JSR main
+HALT
+BOTTOM_OF_STACK .FILL xF000
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+; void modify_array(int *a)
+modify_array
+PUSH R7
+PUSH R5
+.COPY R5, R6
+; end of prologue
+LDR R0, R5, #3 ; load a
+ADD R0, R0, #1
+LDR R0, R0, #0
+ADD R0, R0, #-1
+LDR R1, R5, #3 ; load a
+STR R0, R1, #1
+; epilogue
+modify_array_ret
+POP R5
+POP R7
+RET
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+; int main()
+main
+ADD R6, R6, #-1
+PUSH R7
+PUSH R5
+.COPY R5, R6
+ADD R6, R6, #-5
+; end of prologue
+.ZERO R0
+ADD R0, R0, #3
+ADD R1, R5, #-5 ; load a
+STR R0, R1, #1
+ADD R0, R5, #-5 ; load a
+PUSH R0
+JSR modify_array
+ADD R6, R6, #1
+LD R0, imm30
+ADD R1, R5, #-5 ; load a
+ADD R1, R1, #1
+LDR R1, R1, #0
+ADD R0, R0, R1
+OUT
+; epilogue
+main_ret
+ADD R6, R6, #5
+POP R5
+POP R7
+RET
+imm30 .FILL 0x30
+.END

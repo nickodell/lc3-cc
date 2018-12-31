@@ -11,3 +11,7 @@ load 'regressions'
 @test "AND" {
     run and
 }
+
+@test "array" {
+    run array
+}
