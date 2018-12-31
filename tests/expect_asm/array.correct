@@ -11,11 +11,11 @@ PUSH R7
 PUSH R5
 .COPY R5, R6
 ; end of prologue
-LDR R0, R5, #3 ; load a
+LDR R0, R5, #2 ; load a
 ADD R0, R0, #1
 LDR R0, R0, #0
 ADD R0, R0, #-1
-LDR R1, R5, #3 ; load a
+LDR R1, R5, #2 ; load a
 STR R0, R1, #1
 ; epilogue
 modify_array_ret
