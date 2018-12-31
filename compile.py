@@ -137,15 +137,15 @@ def has_ret_value_slot(name, location=None):
 
 def get_globals(ast):
     global_scope = Scope.GlobalScope()
-    # global_scope.
-    # print(ast)
+    uses_globals = False
     for node in ast.ext:
         if type(node) == c_ast.Decl:
             global_scope.define_variable(node.name, node.type, node.init)
+            uses_globals = True
     global_scope.pick_locations()
     Scope.global_scope = global_scope
     # represents whether the program uses any global variables
-    return True
+    return uses_globals
 
 
 ###################
