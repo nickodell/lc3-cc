@@ -156,6 +156,7 @@ def add_builtin_prototypes():
         # use void instead of int
         # because IO on LC3 cannot fail
         'void putchar(int c);',
+        'void puts(char *s);',
     ]
     for decl in builtins:
         parser = c_parser.CParser()
@@ -174,6 +175,16 @@ def handle_builtin(name, ret_value_slot, number_args):
     if name == "putchar":
         assert number_args == 1
         assert ret_value_slot == False
+        a += asm("OUT")
+    elif name == "puts":
+        assert number_args == 1
+        assert ret_value_slot == False
+        a += asm("PUTS")
+
+        # Add a newline after the string. We're doing a POSIX
+        # puts(), not to be confused with the LC3 trap of the
+        # same name.
+        a += asm("NEWLN")
         a += asm("OUT")
     else:
         raise Exception("Unknown builtin " + name)
@@ -628,7 +639,7 @@ def postfix_traverse(node):
     if typ == c_ast.ID:
         return [("load", node.name)]
     elif typ == c_ast.Constant:
-        return [("set", parse_int_literal(node.value))]
+        return [("set", parse_literal(node))]
     elif typ == c_ast.UnaryOp:
         if op_requires_address(node.op):
             assert type(node.expr) == c_ast.ID
@@ -776,7 +787,13 @@ def postfix_to_asm(postfix, scope):
             a += load_register_from_variable(depth, var_name, scope)
         elif typ == "set":
             depth += 1
-            a += set_register(depth, postfix_operand(op))
+            typ = type(postfix_operand(op))
+            if typ == int:
+                a += set_register(depth, postfix_operand(op))
+            elif typ == str:
+                a += load_address_of_string(depth, postfix_operand(op))
+            else:
+                raise Exception()
         elif typ == "+":
             depth -= 1
             a += asm("ADD R%d, R%d, R%d" % (depth, depth, depth + 1))
@@ -1011,7 +1028,7 @@ def get_global_data_pointer(register):
 # PARSE
 
 def parse_literal(node):
-    if node.type == "int":
+    if node.type in ["int", "char"]:
         return parse_int_literal(node.value)
     elif node.type == "string":
         # pass it through unchanged
