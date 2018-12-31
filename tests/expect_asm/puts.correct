@@ -1,0 +1,52 @@
+.ORIG x3000
+LD R5, BOTTOM_OF_STACK
+LD R6, BOTTOM_OF_STACK
+JSR main
+HALT
+BOTTOM_OF_STACK .FILL xF000
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+; void my_puts(char *s)
+my_puts
+PUSH R7
+PUSH R5
+.COPY R5, R6
+; end of prologue
+my_puts_dowhile_begin
+LDR R0, R5, #2 ; load s
+LDR R0, R0, #0
+OUT
+LDR R0, R5, #2 ; load s
+ADD R0, R0, #1
+STR R0, R5, #2 ; store s
+LDR R0, R5, #2 ; load s
+LDR R0, R0, #0
+BRnp my_puts_dowhile_begin
+; epilogue
+my_puts_ret
+POP R5
+POP R7
+RET
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+; int main()
+main
+ADD R6, R6, #-1
+PUSH R7
+PUSH R5
+.COPY R5, R6
+; end of prologue
+LEA R0, str_hellon
+PUSH R0
+JSR my_puts
+ADD R6, R6, #1
+LEA R0, str_hello
+PUTS
+NEWLN
+OUT
+; epilogue
+main_ret
+POP R5
+POP R7
+RET
+str_hellon .STRINGZ "hello\n"
+str_hello .STRINGZ "hello"
+.END

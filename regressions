@@ -15,3 +15,7 @@ load 'regressions'
 @test "array" {
     run array
 }
+
+@test "puts" {
+    run puts
+}
