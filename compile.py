@@ -900,23 +900,24 @@ def load_address_of_string(regnum, string):
     a += asm("$DEFER %s .STRINGZ %s" % (label, string))
     return a
 
-def store_register_fp_rel(regnum, fp_offset):
+def store_register_fp_rel(regnum, fp_offset, comment=""):
     assert within_6bit_twos_complement(fp_offset)
-    return asm("STR R%d, R5, #%d" % (regnum, fp_offset))
+    return asm("STR R%d, R5, #%d%s" % (regnum, fp_offset, comment))
 
-def load_register_fp_rel(regnum, fp_offset):
+def load_register_fp_rel(regnum, fp_offset, comment=""):
     assert within_6bit_twos_complement(fp_offset)
-    return asm("LDR R%d, R5, #%d" % (regnum, fp_offset))
+    return asm("LDR R%d, R5, #%d%s" % (regnum, fp_offset, comment))
 
 def load_register_from_variable(regnum, name, scope):
+    comment = " ; load %s" % name
     a = []
     try:
         location = scope.get_fp_rel_location(name)
         if not scope.is_array(name):
-            a += load_register_fp_rel(regnum, location)
+            a += load_register_fp_rel(regnum, location, comment)
         else:
             # implicitly convert from array to pointer to first element
-            a += asm("ADD R%d, R5, #%d" % (regnum, location))
+            a += asm("ADD R%d, R5, #%d%s" % (regnum, location, comment))
         return a
     except Scope.AbsoluteAddressingException:
         # this is a global
@@ -929,16 +930,17 @@ def load_register_from_variable(regnum, name, scope):
             a += asm("ADD R%d, R%d, #15" % (regnum, regnum))
             location -= 15
             assert location > 0
-        a += asm("LDR R%d, R%d, #%d" % (regnum, regnum, location))
+        a += asm("LDR R%d, R%d, #%d%s" % (regnum, regnum, location, comment))
         return a
 
 def load_register_from_address(regnum, name, scope):
-    # Load a register with an address, but don't actually load it
+    # Load a register with the address of a variable
+    comment = " ; addr of %s" % name
     a = []
     try:
         location = scope.get_fp_rel_location(name)
         if not scope.is_array(name):
-            a += asm("ADD R0, R5, #%d" % location)
+            a += asm("ADD R0, R5, #%d%s" % (location, comment))
         else:
             raise Exception("Cannot ask for address of array")
         return a
@@ -950,15 +952,16 @@ def load_register_from_address(regnum, name, scope):
         # a += asm("ADD R%d, R%d, #%d" % (tempreg, tempreg, location))
         location = Scope.global_scope.get_global_rel_location(name)
         assert within_5bit_twos_complement(location)
-        a += asm("ADD R%d, R%d, #%d" % (regnum, regnum, location))
+        a += asm("ADD R%d, R%d, #%d%s" % (regnum, regnum, location, comment))
         return a
 
 def store_register_to_variable(regnum, tempreg, name, scope):
     # TODO: use tempreg when location is too far to address
     assert regnum != tempreg
+    comment = " ; store %s" % name
     try:
         location = scope.get_fp_rel_location(name)
-        return store_register_fp_rel(regnum, location)
+        return store_register_fp_rel(regnum, location, comment)
     except Scope.AbsoluteAddressingException:
         # this is a global
         a = []
@@ -967,7 +970,7 @@ def store_register_to_variable(regnum, tempreg, name, scope):
         # a += asm("ADD R%d, R%d, #%d" % (tempreg, tempreg, location))
         location = Scope.global_scope.get_global_rel_location(name)
         assert within_6bit_twos_complement(location)
-        a += asm("STR R%d, R%d, #%d" % (regnum, tempreg, location))
+        a += asm("STR R%d, R%d, #%d%s" % (regnum, tempreg, location, comment))
         return a
 
 def get_global_data_pointer():
