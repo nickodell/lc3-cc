@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 # Takes assembly on stdin, assembles it, and runs it
 debug=false
+run=true
+if [ $# -eq 1 ]; then
+    run=false
+fi
 set -euo pipefail
 # if debug set, print commands before executing them
 if [ $debug = 'true' ]; then set -x; fi
@@ -27,7 +31,13 @@ continue" > $script_path
 
 # Run it.
 # Remove line that says "Loaded such-and-such"
-lc3sim -norun -s $script_path | sed '1 d'
+# Remove part after LC3 halts
+if [ $run = 'true' ]; then
+    lc3sim -norun -s $script_path | sed '1 d; /--- halting the LC-3 ---/,$ d'
+else
+    echo lc3sim -norun $obj_path # | sed '1 d'
+    exit
+fi
 
 # If not in debug mode, clean up after ourselves.
 if [ $debug != 'true' ]; then rm -r $temp_dir; fi
