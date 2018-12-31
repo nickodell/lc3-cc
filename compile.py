@@ -536,13 +536,7 @@ def load_arguments_to_stack(args, scope):
         if type(arg) == c_ast.ID:
             a += load_register_from_variable(0, arg.name, scope)
         elif type(arg) == c_ast.Constant:
-            if arg.type == "int":
-                immediate = parse_int_literal(arg.value)
-                a += set_register(0, immediate, get_explanation(arg))
-            elif arg.type == "string":
-                a += load_address_of_string(0, arg.value)
-            else:
-                raise Exception()
+            a += load_literal(0, arg)
         else:
             raise Exception()
         a += asm("PUSH R0")
@@ -918,6 +912,15 @@ def load_address_of_string(regnum, string):
     a += asm("$DEFER %s .STRINGZ %s" % (label, string))
     return a
 
+def load_literal(regnum, node):
+    parsed = parse_literal(node)
+    if type(parsed) == int:
+        return set_register(regnum, parsed)
+    elif type(parsed) == str:
+        return load_address_of_string(regnum, parsed)
+    else:
+        raise Exception()
+
 def store_register_fp_rel(regnum, fp_offset, comment=""):
     assert within_6bit_twos_complement(fp_offset)
     return asm("STR R%d, R5, #%d%s" % (regnum, fp_offset, comment))
@@ -1007,24 +1010,33 @@ def get_global_data_pointer(register):
 ####################
 # PARSE
 
-def parse_int_literal(literal):
+def parse_literal(node):
+    if node.type == "int":
+        return parse_int_literal(node.value)
+    elif node.type == "string":
+        # pass it through unchanged
+        return node.value
+    else:
+        raise Exception("Unknown literal type " + str(node.type))
+
+def parse_int_literal(value):
     try:
-        return int(literal)
+        return int(value)
     except ValueError:
         pass
     try:
-        return int(literal, 16)
+        return int(value, 16)
     except ValueError:
         pass
-    if literal[0] == literal[-1] == "'":
-        assert 3 <= len(literal) <= 4
-        without_quotes = literal[1:-1]
+    if value[0] == value[-1] == "'":
+        assert 3 <= len(value) <= 4
+        without_quotes = value[1:-1]
         value = bytes(without_quotes, "utf-8").decode("unicode_escape")
         assert len(value) == 1
         value = ord(value[0])
         # print("char constant is '%s' (dec %d)" % (chr(value), value))
         return value
-    raise Exception("Cannot parse literal: " + literal)
+    raise Exception("Cannot parse literal: " + value)
 
 ####################
 # GENERAL
