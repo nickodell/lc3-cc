@@ -13,3 +13,13 @@ __pycache__
 # Notes, not versioned
 TODO
 testcases
+
+# Ignore the generated output of the tests, but not the 
+# expected output of those tests
+tests/expect_asm/*
+!tests/expect_asm/*.correct
+tests/expect_out/*
+!tests/expect_out/*.correct
+
+# temporary
+*.c
