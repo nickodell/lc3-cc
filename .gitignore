@@ -9,3 +9,7 @@ __pycache__
 *.asm
 *.obj
 *.sym
+
+# Notes, not versioned
+TODO
+testcases
