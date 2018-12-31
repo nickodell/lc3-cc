@@ -529,7 +529,7 @@ def load_arguments_to_stack(args, scope):
                 immediate = parse_int_literal(arg.value)
                 a += set_register(0, immediate, get_explanation(arg))
             elif arg.type == "string":
-                address = load_address_of_string(0, arg.value)
+                a += load_address_of_string(0, arg.value)
             else:
                 raise Exception()
         else:
@@ -897,6 +897,7 @@ def load_address_of_string(regnum, string):
     # replace non alphanumeric chars with nothing
     clean_string = re.sub('[^0-9a-zA-Z]+', '', string)
     label = reserve_label("str_%s" % clean_string)
+    a += asm("LEA R%d, %s" % (regnum, label))
     a += asm("$DEFER %s .STRINGZ %s" % (label, string))
     return a
 
