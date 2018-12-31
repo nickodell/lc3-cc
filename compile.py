@@ -933,11 +933,18 @@ def load_register_from_variable(regnum, name, scope):
         a += asm("POP R%d" % regnum)
         location = Scope.global_scope.get_global_rel_location(name)
         # assert within_6bit_twos_complement(location), "%s out of range" % location
-        while not within_6bit_twos_complement(location):
-            a += asm("ADD R%d, R%d, #15" % (regnum, regnum))
-            location -= 15
-            assert location > 0
-        a += asm("LDR R%d, R%d, #%d%s" % (regnum, regnum, location, comment))
+        if not scope.is_array(name):
+            while not within_6bit_twos_complement(location):
+                a += asm("ADD R%d, R%d, #15" % (regnum, regnum))
+                location -= 15
+                assert location > 0
+            a += asm("LDR R%d, R%d, #%d%s" % (regnum, regnum, location, comment))
+        else:
+            while not within_5bit_twos_complement(location):
+                a += asm("ADD R%d, R%d, #15" % (regnum, regnum))
+                location -= 15
+                assert location > 0
+            a += asm("ADD R%d, R%d, #%d%s" % (regnum, regnum, location, comment))
         return a
 
 def load_register_from_address(regnum, name, scope):

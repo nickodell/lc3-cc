@@ -49,7 +49,7 @@ class Scope(object):
             return self.types[name]
         if self.prev_scope is not None:
             return self.prev_scope._get_type(name)
-        raise Exception("Unknown var %s" % name)
+        return global_scope._get_type(name)
 
     def get_fp_rel_location(self, name):
         ret = self._get_fp_rel_location_recursive(name)
@@ -141,6 +141,11 @@ class GlobalScope(object):
 
     def get_global_rel_location(self, name):
         return self.variables[name]
+
+    def _get_type(self, name):
+        if name in self.types:
+            return self.types[name]
+        raise Exception("Unknown var %s" % name)
 
 def sizeof(var_type, initializer):
     # Unless the new variable is an array, assume that
