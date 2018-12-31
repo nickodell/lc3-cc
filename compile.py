@@ -1021,7 +1021,10 @@ def emit_all(ast):
             if node.decl.type.args is not None:
                 args = [arg for arg in node.decl.type.args.params]
             scope = Scope.Scope(None, "function", False)
-            first_arg_offset = 3
+            if has_ret_value_slot(name):
+                first_arg_offset = 3
+            else:
+                first_arg_offset = 2
             for i, arg in enumerate(args):
                 location = first_arg_offset + i
                 scope.define_variable(arg.name, arg.type.type, None, location)
