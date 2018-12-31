@@ -506,11 +506,22 @@ def call_function(func_call, scope):
         a += asm("JSR " + name)
         # callee cleanup
         # pop return value
-        if ret_value_slot:
-            a += asm("POP R0")
-        # pop all parameters
-        if len(args) != 0:
-            a += asm("ADD R6, R6, #%d" % len(args))
+        if not ret_value_slot:
+            # pop all parameters
+            if len(args) != 0:
+                a += asm("ADD R6, R6, #%d" % len(args))
+        else:
+            if len(args) == 0:
+                a += asm("POP R0")
+            else:
+                # Fix bug where adjusting the stack pointer would alter the
+                # condition code. To fix this, adjust the stack pointer,
+                # THEN load the return value from the stack. This requires
+                # using the offset to subtract what we just added, so we
+                # can get what used to be the top of stack.
+                items_to_remove = len(args) + 1
+                a += asm("ADD R6, R6, #%d" % items_to_remove)
+                a += asm("LDR R0, R6, #%d" % -items_to_remove)
     return a
 
 def load_arguments(arguments, scope, stack=True):
