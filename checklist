@@ -26,3 +26,5 @@ done
 
 #git ls-files --error-unmatch tests/and
 
+echo
+echo "All good."

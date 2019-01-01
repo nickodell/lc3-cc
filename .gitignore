@@ -22,4 +22,4 @@ tests/expect_out/*
 !tests/expect_out/*.correct
 
 # temporary
-*.c
+# *.c

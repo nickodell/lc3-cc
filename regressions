@@ -47,3 +47,7 @@ load 'regressions'
 @test "pointers" {
     run pointers
 }
+
+@test "scope" {
+    run scope
+}

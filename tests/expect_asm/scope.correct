@@ -1,0 +1,62 @@
+.ORIG x3000
+LD R5, BOTTOM_OF_STACK
+LD R6, BOTTOM_OF_STACK
+JSR main
+HALT
+BOTTOM_OF_STACK .FILL xF000
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+; int main()
+main
+ADD R6, R6, #-1
+PUSH R7
+PUSH R5
+.COPY R5, R6
+ADD R6, R6, #-3
+; end of prologue
+.ZERO R0
+STR R0, R5, #-1
+.ZERO R0
+ADD R0, R0, #1
+BRz main_skipif
+.ZERO R0
+ADD R0, R0, #1
+STR R0, R5, #-1 ; store i
+.ZERO R0
+ADD R0, R0, #5
+STR R0, R5, #-2
+main_skipif
+LD R0, imm30
+LDR R1, R5, #-1 ; load i
+ADD R0, R0, R1
+STR R0, R5, #-2
+LDR R0, R5, #-2 ; load c
+OUT
+.ZERO R0
+STR R0, R5, #-1 ; store i
+BR main_for_cond
+main_for_begin
+.ZERO R0
+ADD R0, R0, #10
+STR R0, R5, #-3
+LDR R0, R5, #-1 ; load i
+ADD R0, R0, #1
+STR R0, R5, #-1 ; store i
+main_for_cond
+LDR R0, R5, #-1 ; load i
+ADD R0, R0, #-1
+BRn main_for_begin
+LD R0, imm30_2
+LDR R1, R5, #-1 ; load i
+ADD R0, R0, R1
+STR R0, R5, #-2 ; store c
+LDR R0, R5, #-2 ; load c
+OUT
+; epilogue
+main_ret
+ADD R6, R6, #3
+POP R5
+POP R7
+RET
+imm30 .FILL 0x30
+imm30_2 .FILL 0x30
+.END
