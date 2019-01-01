@@ -1,6 +1,7 @@
 import itertools
 from pycparser import c_ast
 from compile import reserve_label, parse_int_literal
+from collections import OrderedDict
 
 global_scope = None # set by compile.py, holds all globals
 
@@ -107,7 +108,7 @@ class Scope(object):
 
 class GlobalScope(object):
     def __init__(self):
-        self.variables = {}
+        self.variables = OrderedDict()
         self.types = {}
         self.initializers = {}
         self.locations = {}
