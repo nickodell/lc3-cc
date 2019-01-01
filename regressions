@@ -23,3 +23,7 @@ load 'regressions'
 @test "division" {
     run division
 }
+
+@test "harmonic" {
+    run harmonic
+}
