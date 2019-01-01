@@ -259,12 +259,12 @@ def emit_statement(statement, function_name, scope):
         if statement.init is not None:
             if type(statement.init) != c_ast.InitList:
                 a += emit_rvalue_expression(statement.init, scope)
-                a += store_register_fp_rel(0, location)
+                a += store_register_fp_rel(0, 1, location)
             else:
                 # initialize each element of the array
                 for i, expr in enumerate(statement.init.exprs):
                     a += emit_rvalue_expression(expr, scope)
-                    a += store_register_fp_rel(0, location + i)
+                    a += store_register_fp_rel(0, 1, location + i)
     elif typ == c_ast.DeclList:
         # process each Decl
         for decl in statement.decls:
@@ -962,13 +962,34 @@ def load_literal(regnum, node):
     else:
         raise Exception()
 
-def store_register_fp_rel(regnum, fp_offset, comment=""):
-    assert within_6bit_twos_complement(fp_offset)
-    return asm("STR R%d, R5, #%d%s" % (regnum, fp_offset, comment))
+def store_register_fp_rel(source_reg, temp_reg, fp_offset, comment=""):
+    assert source_reg != temp_reg
+    a = []
+    fp_reg = 5
+    while not within_6bit_twos_complement(fp_offset):
+        if fp_offset > 0:
+            a += asm("ADD R%d, R%d, #15" % (temp_reg, fp_reg))
+            fp_offset -= 15
+        else:
+            a += asm("ADD R%d, R%d, #-16" % (temp_reg, fp_reg))
+            fp_offset += 16
+        fp_reg = temp_reg
+    a += asm("STR R%d, R%d, #%d%s" % (source_reg, fp_reg, fp_offset, comment))
+    return a
 
-def load_register_fp_rel(regnum, fp_offset, comment=""):
-    assert within_6bit_twos_complement(fp_offset)
-    return asm("LDR R%d, R5, #%d%s" % (regnum, fp_offset, comment))
+def load_register_fp_rel(dest_reg, fp_offset, comment=""):
+    a = []
+    source_reg = 5
+    while not within_6bit_twos_complement(fp_offset):
+        if fp_offset > 0:
+            a += asm("ADD R%d, R%d, #15" % (dest_reg, source_reg))
+            fp_offset -= 15
+        else:
+            a += asm("ADD R%d, R%d, #-16" % (dest_reg, source_reg))
+            fp_offset += 16
+        source_reg = dest_reg
+    a += asm("LDR R%d, R%d, #%d%s" % (dest_reg, source_reg, fp_offset, comment))
+    return a
 
 def load_register_from_variable(regnum, name, scope):
     comment = " ; load %s" % name
@@ -1018,12 +1039,11 @@ def load_register_from_address(regnum, name, scope):
         return a
 
 def store_register_to_variable(regnum, tempreg, name, scope):
-    # TODO: use tempreg when location is too far to address
     assert regnum != tempreg
     comment = " ; store %s" % name
     try:
         location = scope.get_fp_rel_location(name)
-        return store_register_fp_rel(regnum, location, comment)
+        return store_register_fp_rel(regnum, tempreg, location, comment)
     except Scope.AbsoluteAddressingException:
         # this is a global
         a = []
