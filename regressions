@@ -35,3 +35,11 @@ load 'regressions'
 @test "initializers" {
     run initializers
 }
+
+@test "functions" {
+    run functions
+}
+
+@test "for" {
+    run for
+}
