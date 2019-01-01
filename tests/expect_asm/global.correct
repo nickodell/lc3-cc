@@ -1,0 +1,100 @@
+.ORIG x3000
+LEA R0, TRAP_GD
+STI R0, TRAP_GD_VECTOR_ADDR
+LD R5, BOTTOM_OF_STACK
+LD R6, BOTTOM_OF_STACK
+JSR main
+HALT
+BOTTOM_OF_STACK .FILL xF000
+TRAP_GD
+ST R0, TMP_R0
+LD R0, GLOBAL_DATA_START_PTR
+PUSH R0
+LD R0, TMP_R0
+RET
+TMP_R0 .FILL 0
+GLOBAL_DATA_START_PTR .FILL GLOBAL_DATA_START
+TRAP_GD_VECTOR_ADDR .FILL 0x30
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+; int main()
+main
+ADD R6, R6, #-1
+PUSH R7
+PUSH R5
+.COPY R5, R6
+ADD R6, R6, #-3
+; end of prologue
+.ZERO R0
+ADD R0, R0, #5
+TRAP x30
+POP R1
+STR R0, R1, #0 ; store a
+TRAP x30
+POP R0
+LDR R0, R0, #0 ; load a
+LD R1, imm30
+ADD R0, R0, R1
+STR R0, R5, #-1
+TRAP x30
+POP R0
+ADD R0, R0, #0 ; addr of a
+STR R0, R5, #-2
+LDR R0, R5, #-1 ; load b
+OUT
+TRAP x30
+POP R0
+LDR R0, R0, #0 ; load a
+LD R1, imm30_2
+ADD R0, R0, R1
+OUT
+.ZERO R0
+ADD R0, R0, #1
+LDR R1, R5, #-2 ; load c
+STR R0, R1, #0
+LDR R0, R5, #-2 ; load c
+LDR R0, R0, #0
+LD R1, imm30_3
+ADD R0, R0, R1
+LDR R1, R5, #-2 ; load c
+STR R0, R1, #0
+LDR R0, R5, #-2 ; load c
+LDR R0, R0, #0
+OUT
+.ZERO R0
+STR R0, R5, #-3
+BR main_for_cond
+main_for_begin
+LDR R0, R5, #-3 ; load i
+TRAP x30
+POP R1
+ADD R1, R1, #1 ; load array
+LDR R2, R5, #-3 ; load i
+ADD R1, R1, R2
+STR R0, R1, #0
+LDR R0, R5, #-3 ; load i
+ADD R0, R0, #1
+STR R0, R5, #-3 ; store i
+main_for_cond
+LDR R0, R5, #-3 ; load i
+ADD R0, R0, #-5
+BRn main_for_begin
+LD R0, imm30_4
+TRAP x30
+POP R1
+ADD R1, R1, #1 ; load array
+ADD R1, R1, #2
+LDR R1, R1, #0
+ADD R0, R0, R1
+OUT
+; epilogue
+main_ret
+ADD R6, R6, #3
+POP R5
+POP R7
+RET
+imm30 .FILL 0x30
+imm30_2 .FILL 0x30
+imm30_3 .FILL 0x30
+imm30_4 .FILL 0x30
+global_data_start
+.END

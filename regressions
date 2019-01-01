@@ -27,3 +27,7 @@ load 'regressions'
 @test "harmonic" {
     run harmonic
 }
+
+@test "global" {
+    run global
+}
