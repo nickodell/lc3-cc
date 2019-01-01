@@ -995,7 +995,6 @@ def load_register_from_variable(regnum, name, scope):
             a += asm("LDR R%d, R%d, #%d%s" % (regnum, regnum, location, comment))
         else:
             a += add_register(regnum, regnum, location, comment)
-            a += asm("ADD R%d, R%d, #%d%s" % (regnum, regnum, location, comment))
         return a
 
 def load_register_from_address(regnum, name, scope):
@@ -1015,7 +1014,6 @@ def load_register_from_address(regnum, name, scope):
         a += get_global_data_pointer(tempreg)
         # a += asm("ADD R%d, R%d, #%d" % (tempreg, tempreg, location))
         location = Scope.global_scope.get_global_rel_location(name)
-        assert within_5bit_twos_complement(location)
         a += add_register(regnum, regnum, location, comment)
         return a
 
