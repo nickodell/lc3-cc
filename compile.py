@@ -99,6 +99,7 @@ def program_end(uses_globals=False):
     a = []
     if uses_globals:
         a += asm("global_data_start")
+        a += emit_data_section(*Scope.global_scope.get_initial_values())
     a += asm(".END")
     return a
 
@@ -146,6 +147,15 @@ def get_globals(ast):
     Scope.global_scope = global_scope
     # represents whether the program uses any global variables
     return uses_globals
+
+def emit_data_section(labels, values):
+    a = []
+    for addr, val in enumerate(values):
+        label = ""
+        if addr in labels:
+            label = reserve_label(labels[addr]) + " "
+        a += asm("%s.FILL 0x%x" % (label, val))
+    return a
 
 
 ###################

@@ -1,0 +1,68 @@
+.ORIG x3000
+LEA R0, TRAP_GD
+STI R0, TRAP_GD_VECTOR_ADDR
+LD R5, BOTTOM_OF_STACK
+LD R6, BOTTOM_OF_STACK
+JSR main
+HALT
+BOTTOM_OF_STACK .FILL xF000
+TRAP_GD
+ST R0, TMP_R0
+LD R0, GLOBAL_DATA_START_PTR
+PUSH R0
+LD R0, TMP_R0
+RET
+TMP_R0 .FILL 0
+GLOBAL_DATA_START_PTR .FILL GLOBAL_DATA_START
+TRAP_GD_VECTOR_ADDR .FILL 0x30
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+; int main()
+main
+ADD R6, R6, #-1
+PUSH R7
+PUSH R5
+.COPY R5, R6
+ADD R6, R6, #-1
+; end of prologue
+TRAP x30
+POP R0
+ADD R0, R0, #0 ; load a
+STR R0, R5, #-1 ; store a_ptr
+.ZERO R0
+ADD R0, R0, #2
+TRAP x30
+POP R1
+ADD R1, R1, #2 ; load b
+STR R0, R1, #0
+LDR R0, R5, #-1 ; load a_ptr
+LDR R0, R0, #0
+LD R1, imm30
+ADD R0, R0, R1
+OUT
+TRAP x30
+POP R0
+ADD R0, R0, #2 ; load b
+LDR R0, R0, #0
+LD R1, imm30_2
+ADD R0, R0, R1
+OUT
+TRAP x30
+POP R0
+ADD R0, R0, #1 ; load c
+LDR R0, R0, #0
+LD R1, imm30_3
+ADD R0, R0, R1
+OUT
+; epilogue
+main_ret
+ADD R6, R6, #1
+POP R5
+POP R7
+RET
+imm30 .FILL 0x30
+imm30_2 .FILL 0x30
+imm30_3 .FILL 0x30
+global_data_start
+a .FILL 0x1
+c .FILL 0x3
+.END

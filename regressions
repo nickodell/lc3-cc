@@ -31,3 +31,7 @@ load 'regressions'
 @test "global" {
     run global
 }
+
+@test "initializers" {
+    run initializers
+}

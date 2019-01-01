@@ -1,6 +1,6 @@
 import itertools
 from pycparser import c_ast
-from compile import reserve_label, parse_int_literal
+from compile import reserve_label, parse_int_literal, parse_literal
 from collections import OrderedDict
 
 global_scope = None # set by compile.py, holds all globals
@@ -151,6 +151,32 @@ class GlobalScope(object):
         if name in self.types:
             return self.types[name]
         raise Exception("Unknown var %s" % name)
+
+    def get_initial_values(self):
+        labels = {}
+        values = []
+        by_location = lambda x: x[1]
+        for name, location in sorted(self.variables.items(), key=by_location):
+            init = self.initializers[name]
+            if init is None:
+                # Not initialized. We're done.
+                continue
+            assert location == len(values)
+            labels[location] = name
+            var_type = self.types[name]
+            if type(init) != c_ast.InitList:
+                assert type(expr) == c_ast.Constant
+                const = parse_literal(init)
+                assert type(const) == int
+                values.append(const)
+            else:
+                # array
+                for i, expr in enumerate(init.exprs):
+                    assert type(expr) == c_ast.Constant
+                    const = parse_literal(expr)
+                    assert type(const) == int
+                    values.append(const)
+        return labels, values
 
 def sizeof(var_type, initializer):
     # Unless the new variable is an array, assume that
