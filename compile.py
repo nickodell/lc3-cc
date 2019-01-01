@@ -201,8 +201,9 @@ def function_prologue(name, func_typ, frame_size=0, ret_value_slot=True):
     a += asm("; %s" % prototype)
     # give it a label
     a += asm(name)
+    # If we have a return value, reserve a space for it.
     if ret_value_slot:
-        a += asm("ADD R6, R6, #-1")
+        a += add_register(6, 6, -1)
     # save return address
     a += asm("PUSH R7")
     # save fp
@@ -210,7 +211,7 @@ def function_prologue(name, func_typ, frame_size=0, ret_value_slot=True):
     # set current fp to point to top of stack
     a += asm(".COPY R5, R6")
     if frame_size != 0:
-        a += asm("ADD R6, R6, #-%d" % frame_size)
+        a += add_register(6, 6, -frame_size)
     a += asm("; end of prologue")
     return a
 
@@ -220,7 +221,7 @@ def function_epilogue(name, frame_size):
     a += asm("; epilogue")
     a += asm("%s_ret" % name) # TODO: only emit this if theres a return
     if frame_size != 0:
-        a += asm("ADD R6, R6, #%d" % frame_size)
+        a += add_register(6, 6, frame_size)
     a += asm("POP R5")
     a += asm("POP R7")
     # Notice that we don't pop the return value slot, if it exists.
@@ -896,6 +897,29 @@ def op_requires_address(op):
 ####################
 # REGISTER
 
+def add_register(dest_reg, source_reg, offset, comment=""):
+    if source_reg is None:
+        source_reg = regnum
+    a = []
+    while not within_5bit_twos_complement(offset):
+        if offset > 0:
+            a += asm("ADD R%d, R%d, #15" % (dest_reg, source_reg))
+            offset -= 15
+        else:
+            a += asm("ADD R%d, R%d, #-16" % (dest_reg, source_reg))
+            offset += 16
+        # If you were adding to a register from another register,
+        # only the first ADD would involve the source register.
+        # For example, adding 20 to R5 and putting the result in R0
+        # would be:
+        #       ADD R0, R5, #15
+        #       ADD R0, R0, #5
+        source_reg = dest_reg
+    # Loop postcondition: value fits within a five bit
+    # two's complement field
+    a += asm("ADD R%d, R%d, #%d%s" % (dest_reg, source_reg, offset, comment))
+    return a
+
 def set_register(regnum, value, explain=None):
     a = []
     if value is None:
@@ -955,7 +979,7 @@ def load_register_from_variable(regnum, name, scope):
             a += load_register_fp_rel(regnum, location, comment)
         else:
             # implicitly convert from array to pointer to first element
-            a += asm("ADD R%d, R5, #%d%s" % (regnum, location, comment))
+            a += add_register(regnum, 5, location, comment)
         return a
     except Scope.AbsoluteAddressingException:
         # this is a global
@@ -970,10 +994,7 @@ def load_register_from_variable(regnum, name, scope):
                 assert location > 0
             a += asm("LDR R%d, R%d, #%d%s" % (regnum, regnum, location, comment))
         else:
-            while not within_5bit_twos_complement(location):
-                a += asm("ADD R%d, R%d, #15" % (regnum, regnum))
-                location -= 15
-                assert location > 0
+            a += add_register(regnum, regnum, location, comment)
             a += asm("ADD R%d, R%d, #%d%s" % (regnum, regnum, location, comment))
         return a
 
@@ -984,7 +1005,7 @@ def load_register_from_address(regnum, name, scope):
     try:
         location = scope.get_fp_rel_location(name)
         if not scope.is_array(name):
-            a += asm("ADD R0, R5, #%d%s" % (location, comment))
+            a += add_register(0, 5, location, comment)
         else:
             raise Exception("Cannot ask for address of array")
         return a
@@ -995,7 +1016,7 @@ def load_register_from_address(regnum, name, scope):
         # a += asm("ADD R%d, R%d, #%d" % (tempreg, tempreg, location))
         location = Scope.global_scope.get_global_rel_location(name)
         assert within_5bit_twos_complement(location)
-        a += asm("ADD R%d, R%d, #%d%s" % (regnum, regnum, location, comment))
+        a += add_register(regnum, regnum, location, comment)
         return a
 
 def store_register_to_variable(regnum, tempreg, name, scope):
