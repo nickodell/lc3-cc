@@ -1,0 +1,500 @@
+.ORIG x3000
+LD R5, BOTTOM_OF_STACK
+LD R6, BOTTOM_OF_STACK
+JSR main
+HALT
+BOTTOM_OF_STACK .FILL xF000
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+; void bignum_copy(short *dest, short *src)
+bignum_copy
+PUSH R7
+PUSH R5
+.COPY R5, R6
+ADD R6, R6, #-1
+; end of prologue
+.ZERO R0
+ADD R0, R0, #4
+STR R0, R5, #-1 ; store i
+BR bignum_copy_for_cond
+bignum_copy_for_begin
+LDR R0, R5, #3 ; load src
+LDR R0, R0, #0
+LDR R1, R5, #2 ; load dest
+STR R0, R1, #0
+LDR R0, R5, #2 ; load dest
+ADD R0, R0, #1
+STR R0, R5, #2 ; store dest
+LDR R0, R5, #3 ; load src
+ADD R0, R0, #1
+STR R0, R5, #3 ; store src
+LDR R0, R5, #-1 ; load i
+ADD R0, R0, #-1
+STR R0, R5, #-1 ; store i
+bignum_copy_for_cond
+LDR R0, R5, #-1 ; load i
+BRzp bignum_copy_for_begin
+; epilogue
+bignum_copy_ret
+ADD R6, R6, #1
+POP R5
+POP R7
+RET
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+; void bignum_add(short *dest, short *add1)
+bignum_add
+PUSH R7
+PUSH R5
+.COPY R5, R6
+ADD R6, R6, #-3
+; end of prologue
+.ZERO R0
+STR R0, R5, #-1
+.ZERO R0
+ADD R0, R0, #4
+STR R0, R5, #-2 ; store i
+BR bignum_add_for_cond
+bignum_add_for_begin
+LDR R0, R5, #2 ; load dest
+LDR R1, R5, #-2 ; load i
+ADD R0, R0, R1
+LDR R0, R0, #0
+LDR R1, R5, #3 ; load add1
+LDR R2, R5, #-2 ; load i
+ADD R1, R1, R2
+LDR R1, R1, #0
+ADD R0, R0, R1
+LDR R1, R5, #-1 ; load carry
+ADD R0, R0, R1
+STR R0, R5, #-3
+.ZERO R0
+STR R0, R5, #-1 ; store carry
+LDR R0, R5, #-3 ; load temp
+BRzp bignum_add_skipif
+LDR R0, R5, #-3 ; load temp
+LD R1, imm7fff
+AND R0, R0, R1
+STR R0, R5, #-3 ; store temp
+.ZERO R0
+ADD R0, R0, #1
+STR R0, R5, #-1 ; store carry
+bignum_add_skipif
+LDR R0, R5, #-3 ; load temp
+LDR R1, R5, #2 ; load dest
+LDR R2, R5, #-2 ; load i
+ADD R1, R1, R2
+STR R0, R1, #0
+LDR R0, R5, #-2 ; load i
+ADD R0, R0, #-1
+STR R0, R5, #-2 ; store i
+bignum_add_for_cond
+LDR R0, R5, #-2 ; load i
+BRzp bignum_add_for_begin
+; epilogue
+bignum_add_ret
+ADD R6, R6, #3
+POP R5
+POP R7
+RET
+imm7fff .FILL 0x7fff
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+; void bignum_lshift(short *shift)
+bignum_lshift
+PUSH R7
+PUSH R5
+.COPY R5, R6
+ADD R6, R6, #-3
+; end of prologue
+.ZERO R0
+STR R0, R5, #-1
+.ZERO R0
+ADD R0, R0, #4
+STR R0, R5, #-2 ; store i
+BR bignum_lshift_for_cond
+bignum_lshift_for_begin
+LDR R0, R5, #2 ; load shift
+LDR R1, R5, #-2 ; load i
+ADD R0, R0, R1
+LDR R0, R0, #0
+STR R0, R5, #-3
+LDR R0, R5, #-3 ; load temp
+ADD R0, R0, R0
+LDR R1, R5, #-1 ; load carry
+ADD R0, R0, R1
+STR R0, R5, #-3 ; store temp
+.ZERO R0
+STR R0, R5, #-1 ; store carry
+LDR R0, R5, #-3 ; load temp
+BRzp bignum_lshift_skipif
+.ZERO R0
+ADD R0, R0, #1
+STR R0, R5, #-1 ; store carry
+LDR R0, R5, #-3 ; load temp
+LD R1, imm7fff_2
+AND R0, R0, R1
+STR R0, R5, #-3 ; store temp
+bignum_lshift_skipif
+LDR R0, R5, #-3 ; load temp
+LDR R1, R5, #2 ; load shift
+LDR R2, R5, #-2 ; load i
+ADD R1, R1, R2
+STR R0, R1, #0
+LDR R0, R5, #-2 ; load i
+ADD R0, R0, #-1
+STR R0, R5, #-2 ; store i
+bignum_lshift_for_cond
+LDR R0, R5, #-2 ; load i
+BRzp bignum_lshift_for_begin
+; epilogue
+bignum_lshift_ret
+ADD R6, R6, #3
+POP R5
+POP R7
+RET
+imm7fff_2 .FILL 0x7fff
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+; void bignum_mul10(short *op)
+bignum_mul10
+PUSH R7
+PUSH R5
+.COPY R5, R6
+ADD R6, R6, #-5
+; end of prologue
+LDR R0, R5, #2 ; load op
+PUSH R0
+JSR bignum_lshift
+ADD R6, R6, #1
+LDR R0, R5, #2 ; load op
+PUSH R0
+ADD R0, R5, #-5 ; load temp
+PUSH R0
+JSR bignum_copy
+ADD R6, R6, #2
+LDR R0, R5, #2 ; load op
+PUSH R0
+JSR bignum_lshift
+ADD R6, R6, #1
+LDR R0, R5, #2 ; load op
+PUSH R0
+JSR bignum_lshift
+ADD R6, R6, #1
+ADD R0, R5, #-5 ; load temp
+PUSH R0
+LDR R0, R5, #2 ; load op
+PUSH R0
+JSR bignum_add
+ADD R6, R6, #2
+; epilogue
+bignum_mul10_ret
+ADD R6, R6, #5
+POP R5
+POP R7
+RET
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+; int bignum_ge(short *op1, short *op2)
+bignum_ge
+ADD R6, R6, #-1
+PUSH R7
+PUSH R5
+.COPY R5, R6
+ADD R6, R6, #-1
+; end of prologue
+.ZERO R0
+ADD R0, R0, #4
+STR R0, R5, #-1 ; store i
+BR bignum_ge_for_cond
+bignum_ge_for_begin
+LDR R0, R5, #3 ; load op1
+LDR R0, R0, #0
+LDR R1, R5, #4 ; load op2
+LDR R1, R1, #0
+NOT R1, R1
+ADD R0, R0, R1
+ADD R0, R0, #1
+BRnz bignum_ge_skipif
+.ZERO R0
+ADD R0, R0, #1
+STR R0, R5, #2
+BR bignum_ge_ret
+bignum_ge_skipif
+LDR R0, R5, #3 ; load op1
+LDR R0, R0, #0
+LDR R1, R5, #4 ; load op2
+LDR R1, R1, #0
+NOT R1, R1
+ADD R0, R0, R1
+ADD R0, R0, #1
+BRzp bignum_ge_skipif_2
+.ZERO R0
+STR R0, R5, #2
+BR bignum_ge_ret
+bignum_ge_skipif_2
+LDR R0, R5, #3 ; load op1
+ADD R0, R0, #1
+STR R0, R5, #3 ; store op1
+LDR R0, R5, #4 ; load op2
+ADD R0, R0, #1
+STR R0, R5, #4 ; store op2
+LDR R0, R5, #-1 ; load i
+ADD R0, R0, #-1
+STR R0, R5, #-1 ; store i
+bignum_ge_for_cond
+LDR R0, R5, #-1 ; load i
+BRzp bignum_ge_for_begin
+.ZERO R0
+ADD R0, R0, #1
+STR R0, R5, #2
+BR bignum_ge_ret
+; epilogue
+bignum_ge_ret
+ADD R6, R6, #1
+POP R5
+POP R7
+RET
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+; void bignum_sub(short *dest, short *sub)
+bignum_sub
+PUSH R7
+PUSH R5
+.COPY R5, R6
+ADD R6, R6, #-4
+; end of prologue
+.ZERO R0
+ADD R0, R0, #1
+STR R0, R5, #-1
+.ZERO R0
+ADD R0, R0, #4
+STR R0, R5, #-2 ; store i
+BR bignum_sub_for_cond
+bignum_sub_for_begin
+LDR R0, R5, #3 ; load sub
+LDR R1, R5, #-2 ; load i
+ADD R0, R0, R1
+LDR R0, R0, #0
+NOT R0, R0
+LD R1, imm7fff_3
+AND R0, R0, R1
+STR R0, R5, #-3
+LDR R0, R5, #2 ; load dest
+LDR R1, R5, #-2 ; load i
+ADD R0, R0, R1
+LDR R0, R0, #0
+LDR R1, R5, #-3 ; load negated
+ADD R0, R0, R1
+LDR R1, R5, #-1 ; load carry
+ADD R0, R0, R1
+STR R0, R5, #-4
+.ZERO R0
+STR R0, R5, #-1 ; store carry
+LDR R0, R5, #-4 ; load temp
+BRzp bignum_sub_skipif
+LDR R0, R5, #-4 ; load temp
+LD R1, imm7fff_4
+AND R0, R0, R1
+STR R0, R5, #-4 ; store temp
+.ZERO R0
+ADD R0, R0, #1
+STR R0, R5, #-1 ; store carry
+bignum_sub_skipif
+LDR R0, R5, #-4 ; load temp
+LDR R1, R5, #2 ; load dest
+LDR R2, R5, #-2 ; load i
+ADD R1, R1, R2
+STR R0, R1, #0
+LDR R0, R5, #-2 ; load i
+ADD R0, R0, #-1
+STR R0, R5, #-2 ; store i
+bignum_sub_for_cond
+LDR R0, R5, #-2 ; load i
+BRzp bignum_sub_for_begin
+; epilogue
+bignum_sub_ret
+ADD R6, R6, #4
+POP R5
+POP R7
+RET
+imm7fff_3 .FILL 0x7fff
+imm7fff_4 .FILL 0x7fff
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+; void dec_division(char *out, short *num, short *denom)
+dec_division
+PUSH R7
+PUSH R5
+.COPY R5, R6
+ADD R6, R6, #-12
+; end of prologue
+LDR R0, R5, #3 ; load num
+PUSH R0
+ADD R0, R5, #-5 ; load num_copy
+PUSH R0
+JSR bignum_copy
+ADD R6, R6, #2
+LDR R0, R5, #4 ; load denom
+PUSH R0
+ADD R0, R5, #-10 ; load denom_copy
+PUSH R0
+JSR bignum_copy
+ADD R6, R6, #2
+.ZERO R0
+ADD R0, R0, #10
+STR R0, R5, #-12 ; store i
+BR dec_division_for_cond
+dec_division_for_begin
+.ZERO R0
+STR R0, R5, #-11 ; store curr_digit
+BR dec_division_while_cond
+dec_division_while_begin
+LDR R0, R5, #-11 ; load curr_digit
+ADD R0, R0, #1
+STR R0, R5, #-11 ; store curr_digit
+ADD R0, R5, #-10 ; load denom_copy
+PUSH R0
+ADD R0, R5, #-5 ; load num_copy
+PUSH R0
+JSR bignum_sub
+ADD R6, R6, #2
+LDR R0, R5, #-11 ; load curr_digit
+ADD R0, R0, #-10
+BRn dec_division_skipif
+LEA R0, str_Infiniteloopindivisionn
+PUTS
+NEWLN
+OUT
+BR dec_division_ret
+dec_division_skipif
+dec_division_while_cond
+ADD R0, R5, #-10 ; load denom_copy
+PUSH R0
+ADD R0, R5, #-5 ; load num_copy
+PUSH R0
+JSR bignum_ge
+ADD R6, R6, #3
+LDR R0, R6, #-3
+BRnp dec_division_while_begin
+LDR R0, R5, #-11 ; load curr_digit
+LDR R1, R5, #2 ; load out
+STR R0, R1, #0
+LDR R0, R5, #2 ; load out
+ADD R0, R0, #1
+STR R0, R5, #2 ; store out
+ADD R0, R5, #-5 ; load num_copy
+PUSH R0
+JSR bignum_mul10
+ADD R6, R6, #1
+LDR R0, R5, #-12 ; load i
+ADD R0, R0, #-1
+STR R0, R5, #-12 ; store i
+dec_division_for_cond
+LDR R0, R5, #-12 ; load i
+BRzp dec_division_for_begin
+; epilogue
+dec_division_ret
+ADD R6, R6, #12
+POP R5
+POP R7
+RET
+str_Infiniteloopindivisionn .STRINGZ "Infinite loop in division\n"
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+; void dec_print(char *p)
+dec_print
+PUSH R7
+PUSH R5
+.COPY R5, R6
+ADD R6, R6, #-4
+; end of prologue
+.ZERO R0
+STR R0, R5, #-1
+LD R0, imm20
+STR R0, R5, #-2
+LDR R0, R5, #-2 ; load first
+OUT
+.ZERO R0
+STR R0, R5, #-4 ; store i
+BR dec_print_for_cond
+dec_print_for_begin
+LDR R0, R5, #2 ; load p
+LDR R1, R5, #-4 ; load i
+ADD R0, R0, R1
+LDR R0, R0, #0
+STR R0, R5, #-3 ; store current
+LDR R0, R5, #-3 ; load current
+LD R1, imm30
+ADD R0, R0, R1
+OUT
+LDR R0, R5, #-4 ; load i
+BRnp dec_print_skipif
+LD R0, imm2e
+OUT
+dec_print_skipif
+LDR R0, R5, #-4 ; load i
+ADD R0, R0, #1
+STR R0, R5, #-4 ; store i
+dec_print_for_cond
+LDR R0, R5, #-4 ; load i
+ADD R0, R0, #-11
+BRn dec_print_for_begin
+.ZERO R0
+ADD R0, R0, #10
+OUT
+; epilogue
+dec_print_ret
+ADD R6, R6, #4
+POP R5
+POP R7
+RET
+imm20 .FILL 0x20
+imm30 .FILL 0x30
+imm2e .FILL 0x2e
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+; int main()
+main
+ADD R6, R6, #-1
+PUSH R7
+PUSH R5
+.COPY R5, R6
+ADD R6, R6, #-16
+ADD R6, R6, #-5
+; end of prologue
+.ZERO R0
+STR R0, R5, #-5
+.ZERO R0
+STR R0, R5, #-4
+.ZERO R0
+STR R0, R5, #-3
+.ZERO R0
+STR R0, R5, #-2
+.ZERO R0
+ADD R0, R0, #1
+STR R0, R5, #-1
+.ZERO R0
+STR R0, R5, #-10
+.ZERO R0
+STR R0, R5, #-9
+.ZERO R0
+STR R0, R5, #-8
+.ZERO R0
+STR R0, R5, #-7
+.ZERO R0
+ADD R0, R0, #7
+STR R0, R5, #-6
+ADD R0, R5, #-10 ; load bn_denom
+PUSH R0
+ADD R0, R5, #-5 ; load bn_num
+PUSH R0
+ADD R0, R5, #-16
+ADD R0, R0, #-5 ; load out
+PUSH R0
+JSR dec_division
+ADD R6, R6, #3
+ADD R0, R5, #-16
+ADD R0, R0, #-5 ; load out
+PUSH R0
+JSR dec_print
+ADD R6, R6, #1
+; epilogue
+main_ret
+ADD R6, R6, #15
+ADD R6, R6, #6
+POP R5
+POP R7
+RET
+.END

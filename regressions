@@ -19,3 +19,7 @@ load 'regressions'
 @test "puts" {
     run puts
 }
+
+@test "division" {
+    run division
+}
