@@ -43,3 +43,7 @@ load 'regressions'
 @test "for" {
     run for
 }
+
+@test "pointers" {
+    run pointers
+}
