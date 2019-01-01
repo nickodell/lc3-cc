@@ -1032,8 +1032,7 @@ def load_register_from_address(regnum, name, scope):
     except Scope.AbsoluteAddressingException:
         # this is a global
         a = []
-        a += get_global_data_pointer(tempreg)
-        # a += asm("ADD R%d, R%d, #%d" % (tempreg, tempreg, location))
+        a += get_global_data_pointer(regnum)
         location = Scope.global_scope.get_global_rel_location(name)
         a += add_register(regnum, regnum, location, comment)
         return a
@@ -1048,7 +1047,6 @@ def store_register_to_variable(regnum, tempreg, name, scope):
         # this is a global
         a = []
         a += get_global_data_pointer(tempreg)
-        # a += asm("ADD R%d, R%d, #%d" % (tempreg, tempreg, location))
         location = Scope.global_scope.get_global_rel_location(name)
         assert within_6bit_twos_complement(location)
         a += asm("STR R%d, R%d, #%d%s" % (regnum, tempreg, location, comment))
