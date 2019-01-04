@@ -700,6 +700,14 @@ def postfix_optimize(postfix, value_used):
             postfix[-1] = ("++", operand(postfix[-1]))
         elif op_type(postfix[-1]) == "p--":
             postfix[-1] = ("--", operand(postfix[-1]))
+    # look for left shift by a constant - this can be replaced with addition,
+    # which saves a loop
+    for peephole in group_iterate(2):
+        b, c = peephole
+        if op_type(b) == "set" and op_type(c) == "<<":
+            shift_amount = operand(b)
+            peephole = ["self+"] * shift_amount
+            replace_at(peephole)
     # look for two loads to the same location, followed by adding them together
     # replace with one load, one add
     for peephole in group_iterate(3):
