@@ -52,9 +52,9 @@ load 'regressions'
     run scope
 }
 
-# @test "lshift" {
-#    run lshift
-# }
+@test "lshift" {
+   run lshift
+}
 
 @test "bad_fold" {
     run bad_fold
