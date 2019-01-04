@@ -1,0 +1,37 @@
+.ORIG x3000
+LD R5, BOTTOM_OF_STACK
+LD R6, BOTTOM_OF_STACK
+JSR main
+HALT
+BOTTOM_OF_STACK .FILL xF000
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+; int main()
+main
+ADD R6, R6, #-1
+PUSH R7
+PUSH R5
+.COPY R5, R6
+ADD R6, R6, #-2
+; end of prologue
+.ZERO R0
+STR R0, R5, #-1
+.ZERO R0
+ADD R0, R0, #1
+LDR R1, R5, #-1 ; load a
+.ZERO R2
+ADD R2, R2, #2
+AND R1, R1, R2
+ADD R0, R0, R1
+STR R0, R5, #-2
+LDR R0, R5, #-2 ; load b
+LD R1, imm30
+ADD R0, R0, R1
+OUT
+; epilogue
+main_ret
+ADD R6, R6, #2
+POP R5
+POP R7
+RET
+imm30 .FILL 0x30
+.END

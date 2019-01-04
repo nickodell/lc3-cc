@@ -51,3 +51,11 @@ load 'regressions'
 @test "scope" {
     run scope
 }
+
+# @test "lshift" {
+#    run lshift
+# }
+
+@test "bad_fold" {
+    run bad_fold
+}
