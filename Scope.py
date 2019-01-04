@@ -17,6 +17,7 @@ class Scope(object):
         self.variables = {}
         self.types = {}
         self.frame_size = 0
+        self._function_name = ""
 
     def define_variable(self, name, var_type, initializer, location=None):
         if name in self.variables:
@@ -97,6 +98,11 @@ class Scope(object):
             self.break_label = reserve_label(self.break_prefix)
             self.break_prefix_used = True
         return self.break_label
+
+    def function_name(self):
+        if self.kind == "function":
+            return self._function_name
+        return self.prev_scope.function_name()
 
     def __str__(self):
         prev_scope_list = []

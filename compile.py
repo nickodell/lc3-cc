@@ -764,6 +764,9 @@ def postfix_max_depth(postfix):
         elif typ == "|":
             # take two off, put one on
             depth -= 1
+        elif typ == "<<":
+            # take two off, put one on
+            depth -= 1
         elif typ == "~":
             # take one off, put one on
             depth += 0
@@ -831,6 +834,27 @@ def postfix_to_asm(postfix, scope):
         elif typ == "bitwise&":
             depth -= 1
             a += asm("AND R%d, R%d, R%d" % (depth, depth, depth + 1))
+        elif typ == "<<":
+            depth -= 1
+            func_name = scope.function_name()
+            loop_label = reserve_label("%s_lshift_s" % func_name)
+            end_label = reserve_label("%s_lshift_e" % func_name)
+            # SH = value to be shifted
+            # SA = shift amount
+            SA = depth + 1
+            SH = depth
+            a += asm(".SETCC R%d" % SA)
+            a += asm("BRnz %s" % end_label)
+            a += asm("%s" % loop_label)
+            # Double value in SH. This is equivalent to a left-shift
+            # by one.
+            a += asm("ADD R%d, R%d, R%d" % (SH, SH, SH))
+            # Subtract 1 from value in SA
+            a += asm("ADD R%d, R%d, #-1" % (SA, SA))
+            # If CC is positive, then the SA is not zero yet.
+            # Loop until it is.
+            a += asm("BRp %s" % loop_label)
+            a += asm("%s" % end_label)
         elif typ == "~":
             depth += 0
             a += asm("NOT R%d, R%d" % (depth, depth))
@@ -1132,6 +1156,7 @@ def emit_all(ast):
             if node.decl.type.args is not None:
                 args = [arg for arg in node.decl.type.args.params]
             scope = Scope.Scope(None, "function", False)
+            scope._function_name = name
             if has_ret_value_slot(name):
                 first_arg_offset = 3
             else:
