@@ -641,6 +641,9 @@ def emit_rvalue_expression(node, scope, value_used=True):
     # a += undefined(postfix)
     return a
 
+###################
+# POSTFIX
+
 def postfix_traverse(node):
     def disambiguate_binary_op(op):
         if op == "&":
@@ -716,7 +719,7 @@ def postfix_optimize(postfix, value_used):
     for peephole in group_iterate(3):
         a, b, c = peephole
         if op_type(a) == "set" and within_5bit_twos_complement(operand(a)) and \
-                op_type(c) == "+":
+                op_type(c) == "+" and (op_type(b) == "set" or op_type(b) == "load"):
             peephole = [b, ("imm+", operand(a))]
             replace_at(peephole)
         elif op_type(b) == "set" and within_5bit_twos_complement(operand(b)) and \
