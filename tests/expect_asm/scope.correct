@@ -45,7 +45,7 @@ main_for_cond
 LDR R0, R5, #-1 ; load i
 ADD R0, R0, #-1
 BRn main_for_begin
-LD R0, imm30_2
+LD R0, imm30
 LDR R1, R5, #-1 ; load i
 ADD R0, R0, R1
 STR R0, R5, #-2 ; store c
@@ -58,5 +58,4 @@ POP R5
 POP R7
 RET
 imm30 .FILL 0x30
-imm30_2 .FILL 0x30
 .END

@@ -43,14 +43,14 @@ TRAP x30
 POP R0
 ADD R0, R0, #2 ; load b
 LDR R0, R0, #0
-LD R1, imm30_2
+LD R1, imm30
 ADD R0, R0, R1
 OUT
 TRAP x30
 POP R0
 ADD R0, R0, #1 ; load c
 LDR R0, R0, #0
-LD R1, imm30_3
+LD R1, imm30
 ADD R0, R0, R1
 OUT
 ; epilogue
@@ -60,8 +60,6 @@ POP R5
 POP R7
 RET
 imm30 .FILL 0x30
-imm30_2 .FILL 0x30
-imm30_3 .FILL 0x30
 global_data_start
 a .FILL 0x1
 c .FILL 0x3

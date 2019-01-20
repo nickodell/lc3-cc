@@ -288,7 +288,7 @@ STR R0, R5, #-1 ; store carry
 LDR R0, R5, #-4 ; load temp
 BRzp bignum_sub_skipif
 LDR R0, R5, #-4 ; load temp
-LD R1, imm7fff_4
+LD R1, imm7fff_3
 AND R0, R0, R1
 STR R0, R5, #-4 ; store temp
 .ZERO R0
@@ -313,7 +313,6 @@ POP R5
 POP R7
 RET
 imm7fff_3 .FILL 0x7fff
-imm7fff_4 .FILL 0x7fff
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ; void dec_division(char *out, short *num, short *denom)
 dec_division

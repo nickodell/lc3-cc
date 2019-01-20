@@ -25,7 +25,7 @@ OUT
 .ZERO R0
 ADD R0, R0, #2
 STR R0, R5, #-2
-LD R0, imm30_2
+LD R0, imm30
 LDR R1, R5, #-1 ; load a
 LDR R2, R5, #-2 ; load b
 .SETCC R2
@@ -44,5 +44,4 @@ POP R5
 POP R7
 RET
 imm30 .FILL 0x30
-imm30_2 .FILL 0x30
 .END
