@@ -764,6 +764,11 @@ def postfix_max_depth(postfix):
         elif typ == "|":
             # take two off, put one on
             depth -= 1
+        elif typ == "^":
+            # this needs an extra temporary
+            depth += 1
+            max_depth = max(depth, max_depth)
+            depth -= 2
         elif typ == "<<":
             # take two off, put one on
             depth -= 1
@@ -840,6 +845,26 @@ def postfix_to_asm(postfix, scope):
             a += asm("NOT R%d, R%d" % (depth + 1, depth + 1))
             a += asm("AND R%d, R%d, R%d" % (depth, depth, depth + 1))
             a += asm("NOT R%d, R%d" % (depth, depth))
+        elif typ == "^":
+            depth -= 1
+            # A at depth
+            # B at depth+1
+            a += asm("NOT R%d, R%d" % (depth + 2, depth))
+            # A' at depth+2
+            a += asm("AND R%d, R%d, R%d" % (depth + 2, depth + 1, depth + 2))
+            # A'B at depth+2
+            # B at depth+1
+            a += asm("NOT R%d, R%d" % (depth + 1, depth + 1))
+            # B' at depth+1
+            a += asm("AND R%d, R%d, R%d" % (depth + 1, depth, depth + 1))
+            # AB' at depth + 1
+
+            # compute A'B OR AB'
+            a += asm("NOT R%d, R%d" % (depth + 1, depth + 1))
+            a += asm("NOT R%d, R%d" % (depth + 2, depth + 2))
+            a += asm("AND R%d, R%d, R%d" % (depth, depth + 1, depth + 2))
+            a += asm("NOT R%d, R%d" % (depth, depth))
+
         elif typ == "<<":
             depth -= 1
             func_name = scope.function_name()
@@ -850,6 +875,8 @@ def postfix_to_asm(postfix, scope):
             SA = depth + 1
             SH = depth
             a += asm(".SETCC R%d" % SA)
+            # If the shift amount is negative, this is UB, so we can just
+            # jump to the end.
             a += asm("BRnz %s" % end_label)
             a += asm("%s" % loop_label)
             # Double value in SH. This is equivalent to a left-shift
