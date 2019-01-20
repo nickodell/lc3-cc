@@ -33,7 +33,7 @@ continue" > $script_path
 # Remove line that says "Loaded such-and-such"
 # Remove part after LC3 halts
 if [ $run = 'true' ]; then
-    lc3sim -norun -s $script_path | sed '1 d; /--- halting the LC-3 ---/,$ d'
+    lc3sim -norun -s $script_path | sed '1 d; /--- halting the LC-3 ---/,$ d' | head --bytes -2
 else
     echo lc3sim -norun $obj_path # | sed '1 d'
     exit
