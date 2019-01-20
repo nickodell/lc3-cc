@@ -834,6 +834,12 @@ def postfix_to_asm(postfix, scope):
         elif typ == "bitwise&":
             depth -= 1
             a += asm("AND R%d, R%d, R%d" % (depth, depth, depth + 1))
+        elif typ == "|":
+            depth -= 1
+            a += asm("NOT R%d, R%d" % (depth, depth))
+            a += asm("NOT R%d, R%d" % (depth + 1, depth + 1))
+            a += asm("AND R%d, R%d, R%d" % (depth, depth, depth + 1))
+            a += asm("NOT R%d, R%d" % (depth, depth))
         elif typ == "<<":
             depth -= 1
             func_name = scope.function_name()
