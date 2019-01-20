@@ -4,9 +4,11 @@ import sys
 import inspect
 import itertools
 from pycparser import parse_file, c_ast, c_parser, c_generator
-from collections import namedtuple
+from collections import namedtuple, OrderedDict
 import Scope
 Argument = namedtuple('Argument', 'source contents original_arg ')
+Instruction = namedtuple('Instruction', 'src imm')
+Immediate = namedtuple('Immediate', 'value explain')
 
 function_prototypes = {}
 function_builtins = {}
@@ -21,7 +23,8 @@ def set_error():
     global error
     error = 1
 
-def asm(arg): return [arg + "\n"]
+def asm(src, imm=None):
+    return [Instruction(src=src, imm=imm)]
 
 def undefined(arg):
     set_error()
@@ -571,15 +574,72 @@ def load_arguments_to_registers(args, scope):
     # just use the rvalue emit code, since we won't stomp on registers
     return emit_rvalue_expression(args[0], scope)
 
-def process_deferrals(asm):
-    # print(asm)
-    def is_deferred(line):
-        return "$DEFER" in line
-    def remove_defer(line):
-        return line.replace("$DEFER ", "")
-    deferred = [remove_defer(a) for a in asm if is_deferred(a)]
-    asm[:] = [a for a in asm if not is_deferred(a)]
-    asm.extend(deferred)
+def process_deferrals(function):
+    # largest positive LD offset
+    MAX_LD_REACH = 2**8 - 1
+    def requires_immediate(ins):
+        return ins.imm is not None
+    def emit_immediates(immediates, explains, skip):
+        a = []
+        if skip:
+            skiplabel = reserve_label("imm_skip")
+            a += asm("BR %s" % skiplabel)
+        for value, label in immediates.items():
+            if type(value) == int:
+                a += asm("%s .FILL 0x%x%s" % (label, value, explains[value]))
+            elif type(value) == str:
+                a += asm("%s .STRINGZ %s" % (label, value))
+            else:
+                raise Exception()
+        if skip:
+            a += asm(skiplabel)
+        return a
+    # def remove_defer(ins):
+    #     src, imm = ins
+    #     return Instruction(src.replace("$DEFER ", ""), imm)
+    # deferred = [remove_defer(a) for a in asm if is_deferred(a)]
+    # not_deferred = [a for a in asm if not is_deferred(a)]
+    # return not_deferred + deferred
+    asm_out = []
+    immediates = OrderedDict()
+    explains = {}
+    lines_since_first_imm = None
+    for ins in function:
+        if lines_since_first_imm is not None:
+            lines_since_first_imm += 1
+        if not requires_immediate(ins):
+            asm_out.append(ins)
+            continue
+        if lines_since_first_imm is None:
+            lines_since_first_imm = 0
+        value = ins.imm.value
+
+        if value in immediates:
+            label = immediates[value]
+            ins = Instruction(ins.src + label, None)
+            asm_out.append(ins)
+            continue
+        if type(value) == int:
+            label = reserve_label("imm%x" % value)
+        elif type(value) == str:
+            clean_string = re.sub('[^0-9a-zA-Z]+', '', value)
+            label = reserve_label("str_%s" % clean_string)
+        else:
+            raise Exception()
+        immediates[value] = label
+        explains[value] = ins.imm.explain
+        ins = Instruction(ins.src + label, None)
+        asm_out.append(ins)
+        # TODO: is this boundary condition correct?
+        if lines_since_first_imm >= MAX_LD_REACH:
+            asm_out += emit_immediates(immediates, explains, True)
+            # reset our immediates
+            immediates = OrderedDict()
+    if len(immediates) != 0:
+        asm_out += emit_immediates(immediates, explains, False)
+    return asm_out
+
+
 
 ###################
 # EXPRESSION
@@ -1014,10 +1074,8 @@ def set_register(regnum, value, explain=None):
         return a
     if value < 0:
         value += 2 ** 16
-    label = reserve_label("imm%x" % value)
-    a += asm("LD R%d, %s" % (regnum, label))
     explain_str = " ; %s" % explain if explain is not None else ""
-    a += asm("$DEFER %s .FILL 0x%x%s" % (label, value, explain_str))
+    a += asm("LD R%d, " % regnum, Immediate(value, explain_str))
     # print("set_register", a)
     return a
     # return [undefined("cannot set R%d to %s" % (regnum, value))]
@@ -1025,10 +1083,7 @@ def set_register(regnum, value, explain=None):
 def load_address_of_string(regnum, string):
     a = []
     # replace non alphanumeric chars with nothing
-    clean_string = re.sub('[^0-9a-zA-Z]+', '', string)
-    label = reserve_label("str_%s" % clean_string)
-    a += asm("LEA R%d, %s" % (regnum, label))
-    a += asm("$DEFER %s .STRINGZ %s" % (label, string))
+    a += asm("LEA R%d, " % regnum, Immediate(string, None))
     return a
 
 def load_literal(regnum, node):
@@ -1208,13 +1263,14 @@ def emit_all(ast):
             func += function_epilogue(name, frame_size)
 
             # move $DEFER statments to end
-            process_deferrals(func)
+            func = process_deferrals(func)
 
             functions.append(func)
     for func in functions:
         program += func
     program += program_end(uses_globals)
-    sys.stdout.write("".join(program))
+    for line in program:
+        print(line.src)
 
 def main(filename):
     add_builtin_prototypes()
