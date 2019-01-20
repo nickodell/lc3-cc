@@ -5,11 +5,11 @@ check_tracked_and_unmodified() {
     test_file=$1
     if ! git ls-files --error-unmatch $test_file 2> /dev/null ; then
         echo "File $test_file not tracked"
-        exit
+        exit 1
     fi
     if git ls-files -m | grep $test_file > /dev/null ; then
         echo "File $test_file modified since commit"
-        exit
+        exit 1
     fi
 }
 
@@ -19,10 +19,10 @@ check_tracked_and_unmodified regressions
 # Ignore commented tests
 sed 's/#.*//' regressions | awk '/\yrun\y/ {print $2}' | while read test;
 do
-    check_tracked_and_unmodified tests/$test.c
-    check_tracked_and_unmodified tests/expect_asm/$test.correct
-    check_tracked_and_unmodified tests/expect_out/$test.correct
-done
+    check_tracked_and_unmodified tests/$test.c                  || exit $?
+    check_tracked_and_unmodified tests/expect_asm/$test.correct || exit $?
+    check_tracked_and_unmodified tests/expect_out/$test.correct || exit $?
+done || exit $?
 
 #git ls-files --error-unmatch tests/and
 
