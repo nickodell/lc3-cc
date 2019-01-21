@@ -1227,15 +1227,19 @@ def emit_all(ast):
     for func in functions:
         program += func
     program += program_end(uses_globals)
-    for line in program:
-        print(line.src)
+    return program
 
-def main(filename):
+def main(filename, return_asm=False):
     add_builtin_prototypes()
     ast = parse_file(filename, use_cpp=True, cpp_args="-DLC3")
     # ast.show()
-    emit_all(ast)
-    sys.exit(error)
+    program = emit_all(ast)
+    if not return_asm:
+        for line in program:
+            print(line.src)
+        sys.exit(error)
+    else:
+        return "".join([line.src + "\n" for line in program])
 
 if __name__ == '__main__':
     main(sys.argv[1])
