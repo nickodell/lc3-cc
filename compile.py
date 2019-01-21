@@ -607,6 +607,13 @@ def process_deferrals(function):
     for ins in function:
         if lines_since_first_imm is not None:
             lines_since_first_imm += 1
+        # TODO: is this boundary condition correct?
+        if lines_since_first_imm is not None and \
+           lines_since_first_imm >= MAX_LD_REACH:
+            asm_out += emit_immediates(immediates, explains, True)
+            # reset our immediates
+            immediates = OrderedDict()
+            lines_since_first_imm = None
         if not requires_immediate(ins):
             asm_out.append(ins)
             continue
@@ -630,11 +637,6 @@ def process_deferrals(function):
         explains[value] = ins.imm.explain
         ins = Instruction(ins.src + label, None)
         asm_out.append(ins)
-        # TODO: is this boundary condition correct?
-        if lines_since_first_imm >= MAX_LD_REACH:
-            asm_out += emit_immediates(immediates, explains, True)
-            # reset our immediates
-            immediates = OrderedDict()
     if len(immediates) != 0:
         asm_out += emit_immediates(immediates, explains, False)
     return asm_out
