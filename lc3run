@@ -2,13 +2,22 @@
 # Takes assembly on stdin, assembles it, and runs it
 debug=false
 run=true
-if [ $# -eq 1 ]; then
+custom_tmp=false
+
+if [ "$1" == "--norun" ]; then
     run=false
 fi
+
+if [ "$1" == "--usetmp" ]; then
+    temp_dir="$2"
+    custom_tmp=true
+else
+    temp_dir="$(mktemp -d)"
+fi
+
 set -euo pipefail
 # if debug set, print commands before executing them
 if [ $debug = 'true' ]; then set -x; fi
-temp_dir="$(mktemp -d)"
 if [ $debug = 'true' ]; then echo temp_dir: $temp_dir; fi
 asm_path="$temp_dir/a.asm"
 obj_path="$temp_dir/a.obj"
@@ -40,4 +49,8 @@ else
 fi
 
 # If not in debug mode, clean up after ourselves.
-if [ $debug != 'true' ]; then rm -r $temp_dir; fi
+if [ $custom_tmp == 'false' ]; then
+    if [ $debug != 'true' ];
+        then rm -r $temp_dir;
+    fi
+fi
