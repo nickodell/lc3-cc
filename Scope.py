@@ -1,6 +1,6 @@
 import itertools
 from pycparser import c_ast
-from compile import reserve_label, parse_int_literal, parse_literal
+import util
 from collections import OrderedDict
 
 global_scope = None # set by compile.py, holds all globals
@@ -95,7 +95,7 @@ class Scope(object):
         assert self.is_loop
         assert self.break_prefix is not None
         if not self.break_prefix_used:
-            self.break_label = reserve_label(self.break_prefix)
+            self.break_label = util.reserve_label(self.break_prefix)
             self.break_prefix_used = True
         return self.break_label
 
@@ -172,14 +172,14 @@ class GlobalScope(object):
             var_type = self.types[name]
             if type(init) != c_ast.InitList:
                 assert type(expr) == c_ast.Constant
-                const = parse_literal(init)
+                const = util.parse_literal(init)
                 assert type(const) == int
                 values.append(const)
             else:
                 # array
                 for i, expr in enumerate(init.exprs):
                     assert type(expr) == c_ast.Constant
-                    const = parse_literal(expr)
+                    const = util.parse_literal(expr)
                     assert type(const) == int
                     values.append(const)
         return labels, values
@@ -191,7 +191,7 @@ def sizeof(var_type, initializer):
     if type(var_type) == c_ast.ArrayDecl:
         if var_type.dim is not None:
             assert type(var_type.dim) == c_ast.Constant
-            size = parse_int_literal(var_type.dim.value)
+            size = util.parse_int_literal(var_type.dim.value)
         elif initializer is not None:
             size = len(initializer.exprs)
         else:

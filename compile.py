@@ -2,17 +2,17 @@
 import re
 import sys
 import inspect
-import itertools
 from pycparser import parse_file, c_ast, c_parser, c_generator
 from collections import namedtuple, OrderedDict
 import Scope
+import util
+
 Argument = namedtuple('Argument', 'source contents original_arg ')
 Instruction = namedtuple('Instruction', 'src imm')
 Immediate = namedtuple('Immediate', 'value explain')
 
 function_prototypes = {}
 function_builtins = {}
-labels_used = set()
 error = 0
 
 NEG  = 4
@@ -35,19 +35,6 @@ def undefined(arg):
     else:
         funcname = inspect.stack()[1].function
         return "\n" + funcname + "\n\t" + arg + "\n\n"
-
-def reserve_label(label_name):
-    """Hand out a label, but only once."""
-    global labels_used
-    if label_name not in labels_used:
-        labels_used.add(label_name)
-        return label_name
-    # The label is already taken. Try label_2, label_3, etc.
-    for i in itertools.count(2):
-        label_name_numbered = label_name + "_" + str(i)
-        if label_name_numbered not in labels_used:
-            labels_used.add(label_name_numbered)
-            return label_name_numbered
 
 def get_explanation(constant):
     if constant.value.startswith('0x'):
@@ -156,7 +143,7 @@ def emit_data_section(labels, values):
     for addr, val in enumerate(values):
         label = ""
         if addr in labels:
-            label = reserve_label(labels[addr]) + " "
+            label = util.reserve_label(labels[addr]) + " "
         a += asm("%s.FILL 0x%x" % (label, val))
     return a
 
@@ -369,8 +356,8 @@ def emit_loop(function_name, old_scope, init, cond, body, next_, \
     if init is not None:
         # start by initializing the loop variable
         a += emit_statement(init, function_name, scope)
-    begin_label = reserve_label("%s_begin" % label_prefix)
-    cond_label  = reserve_label("%s_cond" % label_prefix)
+    begin_label = util.reserve_label("%s_begin" % label_prefix)
+    cond_label  = util.reserve_label("%s_cond" % label_prefix)
 
     # The condition is at the bottom of the loop, so if we're running a for
     # or while loop, jump down to that condition.
@@ -400,9 +387,9 @@ def emit_if(statement, function_name, old_scope):
     # return the maximum of the two
     else_clause = statement.iffalse is not None
     if else_clause:
-        label_endif = reserve_label("%s_else" % function_name)
+        label_endif = util.reserve_label("%s_else" % function_name)
     else:
-        label_endif = reserve_label("%s_skipif" % function_name)
+        label_endif = util.reserve_label("%s_skipif" % function_name)
 
     # We want to take the branch past the iftrue block if the condition
     # is *not* true. Therefore, we should invert the branch type, by passing
@@ -415,7 +402,7 @@ def emit_if(statement, function_name, old_scope):
         # the iftrue branch must have run.
 
         # Jump past the else clause
-        label_endelse = reserve_label("%s_skipelse" % function_name)
+        label_endelse = util.reserve_label("%s_skipelse" % function_name)
         a += asm("BR %s" % label_endelse)
         a += emit_block(statement.iffalse, function_name, else_scope)
         a += asm("%s" % label_endelse)
@@ -582,7 +569,7 @@ def process_deferrals(function):
     def emit_immediates(immediates, explains, skip):
         a = []
         if skip:
-            skiplabel = reserve_label("imm_skip")
+            skiplabel = util.reserve_label("imm_skip")
             a += asm("BR %s" % skiplabel)
         for value, label in immediates.items():
             if type(value) == int:
@@ -627,10 +614,10 @@ def process_deferrals(function):
             asm_out.append(ins)
             continue
         if type(value) == int:
-            label = reserve_label("imm%x" % value)
+            label = util.reserve_label("imm%x" % value)
         elif type(value) == str:
             clean_string = re.sub('[^0-9a-zA-Z]+', '', value)
-            label = reserve_label("str_%s" % clean_string)
+            label = util.reserve_label("str_%s" % clean_string)
         else:
             raise Exception()
         immediates[value] = label
@@ -674,7 +661,7 @@ def store_to_lvalue(lhs, scope):
             type(lhs.subscript) == c_ast.Constant:
         # array access with fixed subscript
         # significantly simpler
-        subscript = parse_int_literal(lhs.subscript.value)
+        subscript = util.parse_int_literal(lhs.subscript.value)
         # Load to R1, as R0 is in use
         a += load_register_from_variable(1, lhs.name.name, scope)
         assert within_6bit_twos_complement(subscript)
@@ -715,7 +702,7 @@ def postfix_traverse(node):
     if typ == c_ast.ID:
         return [("load", node.name)]
     elif typ == c_ast.Constant:
-        return [("set", parse_literal(node))]
+        return [("set", util.parse_literal(node))]
     elif typ == c_ast.UnaryOp:
         if op_requires_address(node.op):
             assert type(node.expr) == c_ast.ID
@@ -930,8 +917,8 @@ def postfix_to_asm(postfix, scope):
         elif typ == "<<":
             depth -= 1
             func_name = scope.function_name()
-            loop_label = reserve_label("%s_lshift_s" % func_name)
-            end_label = reserve_label("%s_lshift_e" % func_name)
+            loop_label = util.reserve_label("%s_lshift_s" % func_name)
+            end_label = util.reserve_label("%s_lshift_e" % func_name)
             # SH = value to be shifted
             # SA = shift amount
             SA = depth + 1
@@ -1089,7 +1076,7 @@ def load_address_of_string(regnum, string):
     return a
 
 def load_literal(regnum, node):
-    parsed = parse_literal(node)
+    parsed = util.parse_literal(node)
     if type(parsed) == int:
         return set_register(regnum, parsed)
     elif type(parsed) == str:
@@ -1195,37 +1182,6 @@ def get_global_data_pointer(register):
     a += asm("POP R%d" % register)
     return a
 
-
-####################
-# PARSE
-
-def parse_literal(node):
-    if node.type in ["int", "char"]:
-        return parse_int_literal(node.value)
-    elif node.type == "string":
-        # pass it through unchanged
-        return node.value
-    else:
-        raise Exception("Unknown literal type " + str(node.type))
-
-def parse_int_literal(value):
-    try:
-        return int(value)
-    except ValueError:
-        pass
-    try:
-        return int(value, 16)
-    except ValueError:
-        pass
-    if value[0] == value[-1] == "'":
-        assert 3 <= len(value) <= 4
-        without_quotes = value[1:-1]
-        value = bytes(without_quotes, "utf-8").decode("unicode_escape")
-        assert len(value) == 1
-        value = ord(value[0])
-        # print("char constant is '%s' (dec %d)" % (chr(value), value))
-        return value
-    raise Exception("Cannot parse literal: " + value)
 
 ####################
 # GENERAL
