@@ -15,7 +15,7 @@ The following features are not implemented:
  * Structures
  * etc, etc.
 
-Please keep in mind that I have no formal training in compiler design. If you see a strange design decision, the reason is probably that I didn't know any better. Feel free to tell me a better way of doing it; I wrote this to learn.
+Please keep in mind that I have no formal training in compiler design. If you see a strange design decision, the reason is probably that I didn't know any better.
 
 ## Dependencies
 
